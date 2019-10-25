@@ -26,6 +26,7 @@ import (
 	"k8s.io/klog"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubetypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -815,7 +816,83 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 		start("container", &pod.Spec.Containers[idx])
 	}
 
+	// HACKY TEMP CODE FOR TESTING GetContainerResources / UpdateContainerResources
+	if (len(pod.Annotations) > 0) && (pod.Annotations["memLimit"] != "") {
+		newLimitQty := resource.MustParse(pod.Annotations["memLimit"])
+		newLimit, ok := newLimitQty.AsInt64()
+		if !ok {
+			return
+		}
+
+		containerID, _ := findContainerIDByName(&pod.Status, pod.Spec.Containers[0].Name)
+
+		if resources, err := m.runtimeService.GetContainerResources(containerID); err != nil {
+			klog.Errorf("VDBG: GET_CONTAINER_RESOURCES-1 - ERROR: %+v", err)
+		} else {
+			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-1 - SUCCESS. RESOURCES: %+v", resources)
+			if newLimit == resources.Linux.MemoryLimitInBytes {
+				return
+			}
+		}
+
+		uid, username, imerr := m.getImageUser(pod.Spec.Containers[0].Image)
+		if imerr != nil {
+			klog.Errorf("VDBG: GET_IMAGE_USER FAILED - ERROR: %+v", imerr)
+			return
+		}
+		if cMem := pod.Spec.Containers[0].Resources.Limits.Memory(); cMem != nil {
+			pod.Spec.Containers[0].Resources.Limits[v1.ResourceMemory] = newLimitQty
+		}
+
+		// TODO: refactor - add new function getPlatformSpecificContainerResources(...)(ContainerResources) instead of below
+		config := &runtimeapi.ContainerConfig{}
+		if err := m.applyPlatformSpecificContainerConfig(config, &pod.Spec.Containers[0], pod, uid, username); err != nil {
+			klog.Errorf("VDBG: APPLY_PLATFORM_SPECIFIC_CONTAINER_CONFIG FAILED - ERROR: %+v", err)
+			return
+		}
+
+		var newResources *runtimeapi.ContainerResources
+		if config.Linux != nil {
+			newResources = &runtimeapi.ContainerResources{Linux: config.Linux.Resources}
+		} else if config.Windows != nil {
+			newResources = &runtimeapi.ContainerResources{Windows: config.Windows.Resources}
+		} else {
+			klog.Errorf("VDBG: COULDNT GET RESOURCES for CONTAINER: %s", containerID)
+			return
+		}
+
+		klog.Infof("VDBG: CALLING UPDATE_CONTAINER_RESOURCES for ID %s, RESOURCES: %+v", containerID, newResources)
+		if err := m.runtimeService.UpdateContainerResources(containerID, newResources); err != nil {
+			klog.Errorf("VDBG: UPDATE_CONTAINER_RESOURCES - ERROR: %+v", err)
+		} else {
+			klog.Infof("VDBG: UPDATE_CONTAINER_RESOURCES - SUCCESS")
+		}
+
+		if resources, err := m.runtimeService.GetContainerResources(containerID); err != nil {
+			klog.Errorf("VDBG: GET_CONTAINER_RESOURCES-2 - ERROR: %+v", err)
+		} else {
+			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-2 - SUCCESS. RESOURCES: %+v", resources)
+		}
+	}
+
 	return
+}
+
+// TEMP CODE FOR TESTING GetContainerResources / UpdateContainerResources
+func findContainerIDByName(status *v1.PodStatus, name string) (string, error) {
+	allStatuses := status.InitContainerStatuses
+	allStatuses = append(allStatuses, status.ContainerStatuses...)
+	for _, container := range allStatuses {
+		if container.Name == name && container.ContainerID != "" {
+			cid := &kubecontainer.ContainerID{}
+			err := cid.ParseString(container.ContainerID)
+			if err != nil {
+				return "", err
+			}
+			return cid.ID, nil
+		}
+	}
+	return "", fmt.Errorf("unable to find ID for container with name %v in pod status (it may not be running)", name)
 }
 
 // If a container is still in backoff, the function will return a brief backoff error and

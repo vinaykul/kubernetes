@@ -435,7 +435,27 @@ func (ds *dockerService) ContainerStatus(_ context.Context, req *runtimeapi.Cont
 	return &runtimeapi.ContainerStatusResponse{Status: status}, nil
 }
 
+func (ds *dockerService) GetContainerResources(_ context.Context, r *runtimeapi.GetContainerResourcesRequest) (*runtimeapi.GetContainerResourcesResponse, error) {
+	//TODO: docker.client.GetContainerStats API doesn't return the CPU limits info that we want. Need new API?
+	statsJSON, err := ds.client.GetContainerStats(r.ContainerId)
+	if err != nil {
+		return nil, err
+	}
+	dockerStats := statsJSON.Stats
+
+	resources := &runtimeapi.GetContainerResourcesResponse{
+		// TODO: Add Windows support
+		Resources: &runtimeapi.ContainerResources{
+			Linux: &runtimeapi.LinuxContainerResources{
+				MemoryLimitInBytes: int64(dockerStats.MemoryStats.Limit),
+			},
+		},
+	}
+	return resources, nil
+}
+
 func (ds *dockerService) UpdateContainerResources(_ context.Context, r *runtimeapi.UpdateContainerResourcesRequest) (*runtimeapi.UpdateContainerResourcesResponse, error) {
+	// TODO: Add Windows support
 	resources := r.Linux
 	updateConfig := dockercontainer.UpdateConfig{
 		Resources: dockercontainer.Resources{
