@@ -78,8 +78,6 @@ service RuntimeService {
     // ContainerStatus returns status of the container. If the container is not
     // present, returns an error.
     rpc ContainerStatus(ContainerStatusRequest) returns (ContainerStatusResponse) {}
-    // GetContainerResources returns resource configuration of the container.
-    rpc GetContainerResources(GetContainerResourcesRequest) returns (GetContainerResourcesResponse) {}
     // UpdateContainerResources updates ContainerConfig of the container.
     rpc UpdateContainerResources(UpdateContainerResourcesRequest) returns (UpdateContainerResourcesResponse) {}
     // ReopenContainerLog asks runtime to reopen the stdout/stderr log file
@@ -914,6 +912,8 @@ message ContainerStatus {
     repeated Mount mounts = 14;
     // Log path of container.
     string log_path = 15;
+    // Resource configuration of the container.
+    ContainerResources resources = 16;
 }
 
 message ContainerStatusResponse {
@@ -928,20 +928,12 @@ message ContainerStatusResponse {
 
 // ContainerResources holds resource configuration for a container.
 message ContainerResources {
-    // Resource configuration specific to Linux container.
-    LinuxContainerResources linux = 1;
-    // Resource configuration specific to Windows container.
-    WindowsContainerResources windows = 2;
-}
-
-message GetContainerResourcesRequest {
-    // ID of the container whose resource config is queried.
-    string container_id = 1;
-}
-
-message GetContainerResourcesResponse {
-    // Resource configuration of the container.
-    ContainerResources resources = 1;
+    oneof r {
+        // Resource configuration specific to Linux container.
+        LinuxContainerResources linux = 1;
+        // Resource configuration specific to Windows container.
+        WindowsContainerResources windows = 2;
+    }
 }
 
 message UpdateContainerResourcesRequest {

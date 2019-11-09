@@ -351,6 +351,13 @@ func (ds *dockerService) ContainerStatus(_ context.Context, req *runtimeapi.Cont
 	}
 	imageID := toPullableImageID(r.Image, ir)
 
+	//TODO: docker.client.GetContainerStats API doesn't return the CPU limits info that we want. Need new API?
+	statsJSON, err := ds.client.GetContainerStats(req.ContainerId)
+	if err != nil {
+		return nil, err
+	}
+	dockerStats := statsJSON.Stats
+
 	// Convert the mounts.
 	mounts := make([]*runtimeapi.Mount, 0, len(r.Mounts))
 	for i := range r.Mounts {
@@ -431,27 +438,16 @@ func (ds *dockerService) ContainerStatus(_ context.Context, req *runtimeapi.Cont
 		Labels:      labels,
 		Annotations: annotations,
 		LogPath:     r.Config.Labels[containerLogPathLabelKey],
-	}
-	return &runtimeapi.ContainerStatusResponse{Status: status}, nil
-}
-
-func (ds *dockerService) GetContainerResources(_ context.Context, r *runtimeapi.GetContainerResourcesRequest) (*runtimeapi.GetContainerResourcesResponse, error) {
-	//TODO: docker.client.GetContainerStats API doesn't return the CPU limits info that we want. Need new API?
-	statsJSON, err := ds.client.GetContainerStats(r.ContainerId)
-	if err != nil {
-		return nil, err
-	}
-	dockerStats := statsJSON.Stats
-
-	resources := &runtimeapi.GetContainerResourcesResponse{
-		// TODO: Add Windows support
 		Resources: &runtimeapi.ContainerResources{
-			Linux: &runtimeapi.LinuxContainerResources{
-				MemoryLimitInBytes: int64(dockerStats.MemoryStats.Limit),
+			//TODO: Add Windows support
+			R: &runtimeapi.ContainerResources_Linux{
+				Linux: &runtimeapi.LinuxContainerResources{
+					MemoryLimitInBytes: int64(dockerStats.MemoryStats.Limit),
+				},
 			},
 		},
 	}
-	return resources, nil
+	return &runtimeapi.ContainerStatusResponse{Status: status}, nil
 }
 
 func (ds *dockerService) UpdateContainerResources(_ context.Context, r *runtimeapi.UpdateContainerResourcesRequest) (*runtimeapi.UpdateContainerResourcesResponse, error) {

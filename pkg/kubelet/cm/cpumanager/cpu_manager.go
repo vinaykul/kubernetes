@@ -323,8 +323,10 @@ func (m *manager) updateContainerCPUSet(containerID string, cpus cpuset.CPUSet) 
 	return m.containerRuntime.UpdateContainerResources(
 		containerID,
 		&runtimeapi.ContainerResources{
-			Linux: &runtimeapi.LinuxContainerResources{
-				CpusetCpus: cpus.String(),
+			R: &runtimeapi.ContainerResources_Linux{
+				Linux: &runtimeapi.LinuxContainerResources{
+					CpusetCpus: cpus.String(),
+				},
 			},
 		})
 }

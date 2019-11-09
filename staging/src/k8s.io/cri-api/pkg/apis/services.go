@@ -43,8 +43,6 @@ type ContainerManager interface {
 	ListContainers(filter *runtimeapi.ContainerFilter) ([]*runtimeapi.Container, error)
 	// ContainerStatus returns the status of the container.
 	ContainerStatus(containerID string) (*runtimeapi.ContainerStatus, error)
-	// GetContainerResources returns resource configuration applied to the container.
-	GetContainerResources(containerID string) (*runtimeapi.ContainerResources, error)
 	// UpdateContainerResources updates resource configuration for the container.
 	UpdateContainerResources(containerID string, resources *runtimeapi.ContainerResources) error
 	// ExecSync executes a command in the container, and returns the stdout output.

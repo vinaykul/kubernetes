@@ -816,7 +816,9 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 		start("container", &pod.Spec.Containers[idx])
 	}
 
-	// HACKY TEMP CODE FOR TESTING GetContainerResources / UpdateContainerResources
+	// HACKY TEMP CODE FOR TESTING query/update of ContainerResources
+	// To trigger Container memory limit update, annotate pod with desired limit
+	// For e.g.: kubectl annotate --overwrite pods <podname> memLimit="500M"
 	if (len(pod.Annotations) > 0) && (pod.Annotations["memLimit"] != "") {
 		newLimitQty := resource.MustParse(pod.Annotations["memLimit"])
 		newLimit, ok := newLimitQty.AsInt64()
@@ -826,11 +828,11 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 
 		containerID, _ := findContainerIDByName(&pod.Status, pod.Spec.Containers[0].Name)
 
-		if resources, err := m.runtimeService.GetContainerResources(containerID); err != nil {
+		if cStatus, err := m.runtimeService.ContainerStatus(containerID); err != nil {
 			klog.Errorf("VDBG: GET_CONTAINER_RESOURCES-1 - ERROR: %+v", err)
 		} else {
-			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-1 - SUCCESS. RESOURCES: %+v", resources)
-			if newLimit == resources.Linux.MemoryLimitInBytes {
+			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-1 - SUCCESS. RESOURCES: %+v", cStatus.Resources)
+			if newLimit == cStatus.Resources.GetLinux().MemoryLimitInBytes {
 				return
 			}
 		}
@@ -853,9 +855,17 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 
 		var newResources *runtimeapi.ContainerResources
 		if config.Linux != nil {
-			newResources = &runtimeapi.ContainerResources{Linux: config.Linux.Resources}
+			newResources = &runtimeapi.ContainerResources{
+				R: &runtimeapi.ContainerResources_Linux{
+					Linux: config.Linux.Resources,
+				},
+			}
 		} else if config.Windows != nil {
-			newResources = &runtimeapi.ContainerResources{Windows: config.Windows.Resources}
+			newResources = &runtimeapi.ContainerResources{
+				R: &runtimeapi.ContainerResources_Windows{
+					Windows: config.Windows.Resources,
+				},
+			}
 		} else {
 			klog.Errorf("VDBG: COULDNT GET RESOURCES for CONTAINER: %s", containerID)
 			return
@@ -868,10 +878,10 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 			klog.Infof("VDBG: UPDATE_CONTAINER_RESOURCES - SUCCESS")
 		}
 
-		if resources, err := m.runtimeService.GetContainerResources(containerID); err != nil {
+		if cStatus, err := m.runtimeService.ContainerStatus(containerID); err != nil {
 			klog.Errorf("VDBG: GET_CONTAINER_RESOURCES-2 - ERROR: %+v", err)
 		} else {
-			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-2 - SUCCESS. RESOURCES: %+v", resources)
+			klog.Infof("VDBG: GET_CONTAINER_RESOURCES-2 - SUCCESS. RESOURCES: %+v", cStatus.Resources)
 		}
 	}
 
