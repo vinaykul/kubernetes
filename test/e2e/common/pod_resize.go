@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/component-base/featuregate"
+	// utilfeature "k8s.io/apiserver/pkg/util/feature"
+	// "k8s.io/component-base/featuregate"
 	kubecm "k8s.io/kubernetes/pkg/kubelet/cm"
 
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
+	// InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
 
 	CgroupCPUPeriod string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 	CgroupCPUShares string = "/sys/fs/cgroup/cpu/cpu.shares"
@@ -289,9 +289,9 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	var podClient *framework.PodClient
 	var ns string
 
-	if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
-		return
-	}
+	//if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
+	//	return
+	//}
 
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
@@ -405,18 +405,18 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"requests":{"cpu":"150m","memory":"192Mi"}}}
+				{"name":"c1", "resources":{"requests":{"cpu":"200m","memory":"256Mi"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "150m", CPULim: "200m", MemReq: "192Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -427,18 +427,18 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"requests":{"cpu":"50m","memory":"64Mi"}}}
+				{"name":"c1", "resources":{"requests":{"cpu":"100m","memory":"128Mi"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "50m", CPULim: "200m", MemReq: "64Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -456,12 +456,12 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"limits":{"cpu":"300m","memory":"512Mi"}}}
+				{"name":"c1", "resources":{"limits":{"cpu":"400m","memory":"512Mi"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "300m", MemReq: "128Mi", MemLim: "512Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -472,18 +472,18 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"limits":{"cpu":"150m","memory":"192Mi"}}}
+				{"name":"c1", "resources":{"limits":{"cpu":"200m","memory":"256Mi"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "150m", MemReq: "128Mi", MemLim: "192Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -517,18 +517,18 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"requests":{"cpu":"50m","memory":"64Mi"},"limits":{"cpu":"100m","memory":"128Mi"}}}
+				{"name":"c1", "resources":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"200m","memory":"256Mi"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "50m", CPULim: "100m", MemReq: "64Mi", MemLim: "128Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -562,18 +562,18 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
-				{"name":"c1", "resources":{"requests":{"cpu":"50m"},"limits":{"cpu":"100m"}}}
+				{"name":"c1", "resources":{"requests":{"cpu":"100m"},"limits":{"cpu":"200m"}}}
 			]}}`,
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "50m", CPULim: "100m"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
