@@ -19,6 +19,7 @@ package common
 import (
 	"context"
 	"fmt"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"strconv"
 	"strings"
 	"time"
@@ -245,6 +246,40 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	}
 }
 
+// Added by chenw, for obtaining the expected restart count.
+func getExpectedRestarts(pod *v1.Pod) map[string]int32 {
+	expectedRestartMap := make(map[string]int32)
+	for _, c := range pod.Spec.Containers {
+		cRestart := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, c.Name)
+
+		noRestarts := true
+		for _, p := range c.ResizePolicy {
+			c_noRestarts := (p.Policy == v1.NoRestart)
+			noRestarts = (noRestarts && c_noRestarts)
+		}
+
+		if noRestarts {
+			expectedRestartMap[c.Name] = cRestart.RestartCount
+		} else {
+			expectedRestartMap[c.Name] = cRestart.RestartCount + 1
+		}
+	}
+	return expectedRestartMap
+}
+
+// Added by chenw, for verifying the expected restart count with the actual restart count.
+func verifyContainerRestarts(pod *v1.Pod, expectedRestarts map[string]int32) {
+	restartMap := make(map[string]int32)
+	for i, c := range pod.Status.ContainerStatuses {
+		restartMap[c.Name] = pod.Status.ContainerStatuses[i].RestartCount
+	}
+	for c, c_expected_restarts := range expectedRestarts {
+		c_restarts, found := restartMap[c]
+		framework.ExpectEqual(found, true)
+		framework.ExpectEqual(c_restarts, c_expected_restarts)
+	}
+}
+
 var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	f := framework.NewDefaultFramework("pod-resize")
 	var podClient *framework.PodClient
@@ -289,6 +324,8 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "500Mi", MemLim: "500Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -307,14 +344,20 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "100Mi", MemLim: "100Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "200Mi", MemLim: "200Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "300Mi", MemLim: "300Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -334,6 +377,170 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "340m", CPULim: "340m", MemReq: "250Mi", MemLim: "250Mi"},
+				},
+			},
+		},
+		// By chenw, adding E2E test cases 3 for Burstable class single container Pod that specifies both CPU & memory
+		{
+			name: "Bustable class pod, one container - increase CPU & memory requests",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"150m","memory":"192Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "150m", CPULim: "200m", MemReq: "192Mi", MemLim: "256Mi"},
+				},
+			},
+		},
+		{
+			name: "Bustable class pod, one container - decrease CPU & memory requests",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"50m","memory":"64Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "50m", CPULim: "200m", MemReq: "64Mi", MemLim: "256Mi"},
+				},
+			},
+		},
+		// By chenw, adding E2E test cases 6 for Burstable class single container Pod that specifies both CPU & memory
+		{
+			name: "Bustable class pod, one container - increase CPU & memory limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"limits":{"cpu":"300m","memory":"512Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "300m", MemReq: "128Mi", MemLim: "512Mi"},
+				},
+			},
+		},
+		{
+			name: "Bustable class pod, one container - decrease CPU & memory limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"limits":{"cpu":"150m","memory":"192Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "150m", MemReq: "128Mi", MemLim: "192Mi"},
+				},
+			},
+		},
+		// By chenw, adding E2E test cases 9 for Burstable class single container Pod that specifies both CPU & memory
+		{
+			name: "Bustable class pod, one container - increase CPU & memory requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"200m","memory":"256Mi"},"limits":{"cpu":"400m","memory":"512Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
+				},
+			},
+		},
+		{
+			name: "Bustable class pod, one container - decrease CPU & memory requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"50m","memory":"64Mi"},"limits":{"cpu":"100m","memory":"128Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "50m", CPULim: "100m", MemReq: "64Mi", MemLim: "128Mi"},
+				},
+			},
+		},
+		// By chenw, adding E2E test case 3 for Burstable class single container Pod that specifies CPU only
+		{
+			name: "Bustable class pod, one container specifying CPU only - increase CPU requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"200m"},"limits":{"cpu":"400m"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
+				},
+			},
+		},
+		{
+			name: "Bustable class pod, one container specifying CPU only - decrease CPU requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"cpu":"50m"},"limits":{"cpu":"100m"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "50m", CPULim: "100m"},
 				},
 			},
 		},
@@ -362,8 +569,10 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			ginkgo.By("verifying pod status resources are as expected")
 			verifyPodStatusResources(pod, tc.containers)
 
-			//TODO: verify expected resize policy
+			// chenw, obtain the expected restart counts for all containers
+			expected_restarts := getExpectedRestarts(pod)
 
+			//TODO: verify expected resize policy
 			ginkgo.By("patching pod for resize")
 			pPod, pErr := f.ClientSet.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name,
 				types.StrategicMergePatchType, []byte(tc.patchString), metav1.PatchOptions{})
@@ -402,6 +611,9 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			verifyPodResources(rPod, tc.expected)
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
+
+			// Added by chenw, verify the container restarting count
+			verifyContainerRestarts(pod, expected_restarts)
 
 			ginkgo.By("deleting pod")
 			err = e2epod.DeletePodWithWait(f.ClientSet, pod)
