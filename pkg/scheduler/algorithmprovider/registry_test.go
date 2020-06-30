@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/component-base/featuregate"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpreemption"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -80,6 +81,11 @@ func TestClusterAutoscalerProvider(t *testing.T) {
 				{Name: interpodaffinity.Name},
 			},
 		},
+		PostFilter: &schedulerapi.PluginSet{
+			Enabled: []schedulerapi.Plugin{
+				{Name: defaultpreemption.Name},
+			},
+		},
 		PreScore: &schedulerapi.PluginSet{
 			Enabled: []schedulerapi.Plugin{
 				{Name: interpodaffinity.Name},
@@ -106,11 +112,6 @@ func TestClusterAutoscalerProvider(t *testing.T) {
 				{Name: volumebinding.Name},
 			},
 		},
-		Unreserve: &schedulerapi.PluginSet{
-			Enabled: []schedulerapi.Plugin{
-				{Name: volumebinding.Name},
-			},
-		},
 		PreBind: &schedulerapi.PluginSet{
 			Enabled: []schedulerapi.Plugin{
 				{Name: volumebinding.Name},
@@ -119,11 +120,6 @@ func TestClusterAutoscalerProvider(t *testing.T) {
 		Bind: &schedulerapi.PluginSet{
 			Enabled: []schedulerapi.Plugin{
 				{Name: defaultbinder.Name},
-			},
-		},
-		PostBind: &schedulerapi.PluginSet{
-			Enabled: []schedulerapi.Plugin{
-				{Name: volumebinding.Name},
 			},
 		},
 	}
@@ -177,6 +173,11 @@ func TestApplyFeatureGates(t *testing.T) {
 						{Name: interpodaffinity.Name},
 					},
 				},
+				PostFilter: &schedulerapi.PluginSet{
+					Enabled: []schedulerapi.Plugin{
+						{Name: defaultpreemption.Name},
+					},
+				},
 				PreScore: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: interpodaffinity.Name},
@@ -203,11 +204,6 @@ func TestApplyFeatureGates(t *testing.T) {
 						{Name: volumebinding.Name},
 					},
 				},
-				Unreserve: &schedulerapi.PluginSet{
-					Enabled: []schedulerapi.Plugin{
-						{Name: volumebinding.Name},
-					},
-				},
 				PreBind: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: volumebinding.Name},
@@ -216,11 +212,6 @@ func TestApplyFeatureGates(t *testing.T) {
 				Bind: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: defaultbinder.Name},
-					},
-				},
-				PostBind: &schedulerapi.PluginSet{
-					Enabled: []schedulerapi.Plugin{
-						{Name: volumebinding.Name},
 					},
 				},
 			},
@@ -262,6 +253,11 @@ func TestApplyFeatureGates(t *testing.T) {
 						{Name: interpodaffinity.Name},
 					},
 				},
+				PostFilter: &schedulerapi.PluginSet{
+					Enabled: []schedulerapi.Plugin{
+						{Name: defaultpreemption.Name},
+					},
+				},
 				PreScore: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: interpodaffinity.Name},
@@ -286,11 +282,6 @@ func TestApplyFeatureGates(t *testing.T) {
 						{Name: volumebinding.Name},
 					},
 				},
-				Unreserve: &schedulerapi.PluginSet{
-					Enabled: []schedulerapi.Plugin{
-						{Name: volumebinding.Name},
-					},
-				},
 				PreBind: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: volumebinding.Name},
@@ -299,11 +290,6 @@ func TestApplyFeatureGates(t *testing.T) {
 				Bind: &schedulerapi.PluginSet{
 					Enabled: []schedulerapi.Plugin{
 						{Name: defaultbinder.Name},
-					},
-				},
-				PostBind: &schedulerapi.PluginSet{
-					Enabled: []schedulerapi.Plugin{
-						{Name: volumebinding.Name},
 					},
 				},
 			},

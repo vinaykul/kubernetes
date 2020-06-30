@@ -29,6 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
+<<<<<<< HEAD
+=======
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/component-base/featuregate"
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 	kubecm "k8s.io/kubernetes/pkg/kubelet/cm"
 
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -39,6 +44,11 @@ import (
 )
 
 const (
+<<<<<<< HEAD
+=======
+	InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
+
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 	CgroupCPUPeriod string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 	CgroupCPUShares string = "/sys/fs/cgroup/cpu/cpu.shares"
 	CgroupCPUQuota  string = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
@@ -228,17 +238,30 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		}
 		tc := makeTestContainer(ci)
 		if tc.Resources.Limits != nil || tc.Resources.Requests != nil {
+<<<<<<< HEAD
 			var cpuShares uint64
+=======
+			var cpuShares int64
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 			memLimitInBytes := tc.Resources.Limits.Memory().Value()
 			cpuRequest := tc.Resources.Requests.Cpu()
 			cpuLimit := tc.Resources.Limits.Cpu()
 			if cpuRequest.IsZero() && !cpuLimit.IsZero() {
+<<<<<<< HEAD
 				cpuShares = kubecm.MilliCPUToShares(cpuLimit.MilliValue())
 			} else {
 				cpuShares = kubecm.MilliCPUToShares(cpuRequest.MilliValue())
 			}
 			cpuQuota := kubecm.MilliCPUToQuota(cpuLimit.MilliValue(), kubecm.QuotaPeriod)
 			verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatUint(cpuShares, 10))
+=======
+				cpuShares = int64(kubecm.MilliCPUToShares(cpuLimit.MilliValue()))
+			} else {
+				cpuShares = int64(kubecm.MilliCPUToShares(cpuRequest.MilliValue()))
+			}
+			cpuQuota := kubecm.MilliCPUToQuota(cpuLimit.MilliValue(), kubecm.QuotaPeriod)
+			verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatInt(cpuShares, 10))
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 			verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10))
 			verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10))
 		}
@@ -249,6 +272,14 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	f := framework.NewDefaultFramework("pod-resize")
 	var podClient *framework.PodClient
 	var ns string
+<<<<<<< HEAD
+=======
+
+	if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
+		return
+	}
+
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
 		ns = f.Namespace.Name
@@ -280,6 +311,11 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "400Mi", MemLim: "400Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 			},
 		},
@@ -289,6 +325,11 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "500Mi", MemLim: "500Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -298,6 +339,11 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "250Mi", MemLim: "250Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 			},
 		},
@@ -307,14 +353,29 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "100Mi", MemLim: "100Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "200Mi", MemLim: "200Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "300Mi", MemLim: "300Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -326,14 +387,29 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "140m", CPULim: "140m", MemReq: "50Mi", MemLim: "50Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "150m", CPULim: "150m", MemReq: "240Mi", MemLim: "240Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "340m", CPULim: "340m", MemReq: "250Mi", MemLim: "250Mi"},
+<<<<<<< HEAD
+=======
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 				},
 			},
 		},
@@ -358,12 +434,19 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			ginkgo.By("verifying pod resources and allocations are as expected")
 			verifyPodResources(pod, tc.containers)
 			verifyPodAllocations(pod, tc.containers)
+<<<<<<< HEAD
+=======
+			verifyPodResizePolicy(pod, tc.containers)
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 
 			ginkgo.By("verifying pod status resources are as expected")
 			verifyPodStatusResources(pod, tc.containers)
 
+<<<<<<< HEAD
 			//TODO: verify expected resize policy
 
+=======
+>>>>>>> 426d0bbcb13489c50a52dbbf3b5fef24bb2720d6
 			ginkgo.By("patching pod for resize")
 			pPod, pErr := f.ClientSet.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name,
 				types.StrategicMergePatchType, []byte(tc.patchString), metav1.PatchOptions{})
