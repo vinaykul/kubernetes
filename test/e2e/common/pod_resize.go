@@ -50,7 +50,8 @@ const (
 	CgroupMemLimit  string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
 
 	PollInterval time.Duration = 2 * time.Second
-	PollTimeout  time.Duration = time.Minute
+	// PollTimeout  time.Duration = time.Minute
+	PollTimeout  time.Duration = 5 * time.Minute
 )
 
 type ContainerResources struct {
@@ -223,8 +224,11 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	verifyCgroupValue := func(cName, cgPath, expectedCgValue string) {
 		cmd := []string{"head", "-n", "1", cgPath}
 		cgValue, err := framework.LookForStringInPodExecToContainer(pod.Namespace, pod.Name, cName, cmd, expectedCgValue, PollTimeout)
+		framework.Logf(cgValue)
 		framework.ExpectNoError(err, "failed to find expected cgroup value in container")
 		cgValue = strings.Trim(cgValue, "\n")
+		framework.Logf(cgValue)
+		framework.Logf(expectedCgValue)
 		framework.ExpectEqual(cgValue, expectedCgValue)
 	}
 	for _, ci := range tcInfo {
