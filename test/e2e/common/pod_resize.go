@@ -22,6 +22,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"strconv"
 	"strings"
+	"encoding/json"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -212,6 +213,12 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	for i, c := range pod.Status.ContainerStatuses {
 		csMap[c.Name] = &pod.Status.ContainerStatuses[i]
 	}
+
+	cMap := make(map[string]*v1.Container)
+	for i, c := range pod.Spec.Containers {
+		cMap[c.Name] = &pod.Spec.Containers[i]
+	}
+
 	for _, ci := range tcInfo {
 		cs, found := csMap[ci.Name]
 		framework.ExpectEqual(found, true)
@@ -246,30 +253,89 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 			} else {
 				cpuShares = int64(kubecm.MilliCPUToShares(cpuRequest.MilliValue()))
 			}
+
 			cpuQuota := kubecm.MilliCPUToQuota(cpuLimit.MilliValue(), kubecm.QuotaPeriod)
-			verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatInt(cpuShares, 10))
-			verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10))
-			verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10))
+
+			// Added by chenw. Verify the CPU shares only when the pod QoS is guaranteed.
+			//if (pod.Status.QOSClass == v1.PodQOSGuaranteed) {
+			if !cpuLimit.IsZero() || !cpuRequest.IsZero() {
+				verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatInt(cpuShares, 10))
+			}
+			//}
+
+			if !cpuLimit.IsZero() {
+				verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10))
+			}
+
+			// Added by chenw. If memory is not specified, the value in memLimitInBytes would be 0.
+			if (memLimitInBytes > 0) {
+				verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10))
+			}
 		}
 	}
 }
 
 // Added by chenw, for obtaining the expected restart count.
-func getExpectedRestarts(pod *v1.Pod) map[string]int32 {
-	expectedRestartMap := make(map[string]int32)
-	for _, c := range pod.Spec.Containers {
-		cRestart := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, c.Name)
-
-		noRestarts := true
-		for _, p := range c.ResizePolicy {
-			c_noRestarts := (p.Policy == v1.NoRestart)
-			noRestarts = (noRestarts && c_noRestarts)
+//
+func getExpectedRestarts(pod *v1.Pod, patch string) map[string]int32 {
+	// Add a lambda function to obtain the resize patch map for a particular container
+	getContainerPatch := func (container string) map[string]interface{}{
+		resizeMap := make(map[string]interface{})
+		err := json.Unmarshal([]byte(patch), &resizeMap)
+		if err != nil {
+			return nil
 		}
 
-		if noRestarts {
-			expectedRestartMap[c.Name] = cRestart.RestartCount
+		containers := resizeMap["spec"].(map[string]interface{})
+		containerResizeList := containers["containers"].([]interface{})
+
+		for _, c := range containerResizeList {
+			cObj := c.(map[string]interface{})
+			if cObj["name"] == container {
+				resourceResize := cObj["resources"].(map[string]interface{})
+				return resourceResize
+			}
+		}
+		return nil
+	}
+
+	// Add a lambda function to check if there is resize patch for a particular resource type(cpu/memory) and size type (limits/requests)
+	hasResize := func (cResizer map[string]interface{}, sizeType string, rscType string) bool {
+		if val, ok := cResizer[sizeType]; ok {
+			rscResizeObj := val.(map[string]interface{})
+			if _, ok := rscResizeObj[rscType]; ok {
+				return true
+			} else {
+				return false
+			}
 		} else {
-			expectedRestartMap[c.Name] = cRestart.RestartCount + 1
+			return false
+		}
+	}
+
+	expectedRestartMap := make(map[string]int32)
+	for _, c := range pod.Spec.Containers {
+		cStatus := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, c.Name)
+		cPatch := getContainerPatch(c.Name)
+		if cPatch == nil {
+			continue
+		}
+
+		cRestart := false
+		for _, p := range c.ResizePolicy {
+			rsc := p.ResourceName.String()
+			needsRestart := (p.Policy == v1.RestartContainer)
+			hasPatch := hasResize(cPatch, "limits", rsc) || hasResize(cPatch, "requests", rsc)
+
+			if hasPatch && needsRestart {
+				cRestart = true
+			}
+		}
+
+		if cRestart {
+			expectedRestartMap[c.Name] = cStatus.RestartCount + 1
+		} else {
+			expectedRestartMap[c.Name] = cStatus.RestartCount
 		}
 	}
 	return expectedRestartMap
@@ -442,7 +508,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "512Mi"},
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 				},
@@ -583,6 +649,51 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				},
 			},
 		},
+		// By chenw, adding E2E test case 3 for Burstable class single container Pod that specifies memory only
+		{
+			name: "Bustable class pod, one container that specifies memory only - increase memory requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"memory":"256Mi"},"limits":{"memory":"512Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+		},
+		{
+			name: "Bustable class pod, one container that specifies memory only - decrease memory requests & limits",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+				{"name":"c1", "resources":{"requests":{"memory":"128Mi"},"limits":{"memory":"256Mi"}}}
+			]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
+				},
+			},
+		},
 	}
 
 	for idx := range tests {
@@ -609,8 +720,8 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			ginkgo.By("verifying pod status resources are as expected")
 			verifyPodStatusResources(pod, tc.containers)
 
-			// chenw, obtain the expected restart counts for all containers
-			expected_restarts := getExpectedRestarts(pod)
+			// added by chenw, obtain the expected restart counts for all containers
+			expected_restarts := getExpectedRestarts(pod, tc.patchString)
 
 			ginkgo.By("patching pod for resize")
 			pPod, pErr := f.ClientSet.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name,
