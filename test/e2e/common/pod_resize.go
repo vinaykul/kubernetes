@@ -364,6 +364,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				},
 			},
 		},
+		//TODO: more tests
 	}
 
 	for idx := range tests {
