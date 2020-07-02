@@ -223,7 +223,7 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		// Fixed the testing error for container specifying memory only, added by chenw.
 		// When creating a container in a pod without specifying the CPUReq,  its Resource.CPUReq automatically became "2m"
 		if ci.Resources.CPUReq == "" {
-			ci.Resources.CPUReq = "2m"
+			ci.Resources.CPUReq = NotSpecifiedCPUReq
 
 			tc := makeTestContainer(ci)
 			framework.ExpectEqual(cs.Resources, tc.Resources)
