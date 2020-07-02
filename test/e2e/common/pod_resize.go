@@ -701,7 +701,12 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					}
 					differs := false
 					for idx, c := range pod.Spec.Containers {
-						if diff.ObjectDiff(c.Resources, pod.Status.ContainerStatuses[idx].Resources) != "" {
+						// When containers specify memory only, the pod.Status.ContainerStatuses[idx].Resources will
+						// automatically add CPUReq="2m" for the container, thus making diff_log never "".
+						// We need to exclude this for containers that specify memory only.
+						diff_log := diff.ObjectDiff(c.Resources, pod.Status.ContainerStatuses[idx].Resources)
+						framework.Logf(diff_log)
+						if diff_log != "" {
 							differs = true
 							break
 						}
