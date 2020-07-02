@@ -49,7 +49,8 @@ const (
 	CgroupMemLimit  string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
 
 	PollInterval time.Duration = 2 * time.Second
-	PollTimeout  time.Duration = time.Minute
+	// PollTimeout  time.Duration = time.Minute
+	PollTimeout  time.Duration = 5 * time.Minute
 )
 
 type ContainerResources struct {
@@ -684,6 +685,13 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				types.StrategicMergePatchType, []byte(tc.patchString), metav1.PatchOptions{})
 			framework.ExpectNoError(pErr, "failed to patch pod for resize")
 
+			ginkgo.By("verifying pod patched for resize")
+			verifyPodResources(pPod, tc.expected)
+			// verifyPodAllocations(pPod, tc.containers)
+
+			ginkgo.By("verifying cgroup configuration in containers")
+			verifyPodContainersCgroupConfig(pPod, tc.expected)
+
 			ginkgo.By("verifying pod resources, allocations, and status after resize")
 			waitPodStatusResourcesEqualSpecResources := func() (*v1.Pod, error) {
 				for start := time.Now(); time.Since(start) < PollTimeout; time.Sleep(PollInterval) {
@@ -707,13 +715,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			}
 			rPod, rErr := waitPodStatusResourcesEqualSpecResources()
 			framework.ExpectNoError(rErr, "failed to get pod")
-			ginkgo.By("verifying pod patched for resize")
-			verifyPodResources(pPod, tc.expected)
-			// verifyPodAllocations(pPod, tc.containers)
-
-			ginkgo.By("verifying cgroup configuration in containers")
-			verifyPodContainersCgroupConfig(pPod, tc.expected)
-
+			// verifyPodResources(pPod, tc.expected)
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
 
