@@ -49,8 +49,7 @@ const (
 	CgroupMemLimit  string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
 
 	PollInterval time.Duration = 2 * time.Second
-	// PollTimeout  time.Duration = time.Minute
-	PollTimeout  time.Duration = 5 * time.Minute
+	PollTimeout  time.Duration = time.Minute
 )
 
 type ContainerResources struct {
@@ -221,10 +220,15 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		// When creating a container in a pod without specifying the CPUReq,  its Resource.CPUReq automatically became "2m"
 		if ci.Resources.CPUReq == "" {
 			ci.Resources.CPUReq = "2m"
-		}
 
-		tc := makeTestContainer(ci)
-		framework.ExpectEqual(cs.Resources, tc.Resources)
+			tc := makeTestContainer(ci)
+			framework.ExpectEqual(cs.Resources, tc.Resources)
+
+			ci.Resources.CPUReq = ""
+		} else {
+			tc := makeTestContainer(ci)
+			framework.ExpectEqual(cs.Resources, tc.Resources)
+		}
 
 		// Added by chenw, verify the restart count of the container.
 		framework.ExpectEqual(cs.RestartCount, ci.RestartCnt)
@@ -680,13 +684,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				types.StrategicMergePatchType, []byte(tc.patchString), metav1.PatchOptions{})
 			framework.ExpectNoError(pErr, "failed to patch pod for resize")
 
-			ginkgo.By("verifying pod patched for resize")
-			verifyPodResources(pPod, tc.expected)
-			verifyPodAllocations(pPod, tc.containers)
-
-			ginkgo.By("verifying cgroup configuration in containers")
-			verifyPodContainersCgroupConfig(pPod, tc.expected)
-
 			ginkgo.By("verifying pod resources, allocations, and status after resize")
 			waitPodStatusResourcesEqualSpecResources := func() (*v1.Pod, error) {
 				for start := time.Now(); time.Since(start) < PollTimeout; time.Sleep(PollInterval) {
@@ -710,7 +707,13 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			}
 			rPod, rErr := waitPodStatusResourcesEqualSpecResources()
 			framework.ExpectNoError(rErr, "failed to get pod")
-			verifyPodResources(rPod, tc.expected)
+			ginkgo.By("verifying pod patched for resize")
+			verifyPodResources(pPod, tc.expected)
+			// verifyPodAllocations(pPod, tc.containers)
+
+			ginkgo.By("verifying cgroup configuration in containers")
+			verifyPodContainersCgroupConfig(pPod, tc.expected)
+
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
 
