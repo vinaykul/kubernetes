@@ -51,6 +51,9 @@ const (
 	PollInterval time.Duration = 2 * time.Second
 	// PollTimeout  time.Duration = time.Minute
 	PollTimeout  time.Duration = 5 * time.Minute
+
+	// Bustable containers without CPU request will have a default "2m" cpu request
+	NotSpecifiedCPUReq = "2m"
 )
 
 type ContainerResources struct {
@@ -704,8 +707,12 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 						// When containers specify memory only, the pod.Status.ContainerStatuses[idx].Resources will
 						// automatically add CPUReq="2m" for the container, thus making diff_log never "".
 						// We need to exclude this for containers that specify memory only.
+						if _, ok := c.Resources.Requests[v1.ResourceCPU]; !ok {
+							c.Resources.Requests[v1.ResourceCPU] = resource.MustParse(NotSpecifiedCPUReq)
+						}
 						diff_log := diff.ObjectDiff(c.Resources, pod.Status.ContainerStatuses[idx].Resources)
-						framework.Logf(diff_log)
+						delete(c.Resources.Requests, v1.ResourceCPU)
+
 						if diff_log != "" {
 							differs = true
 							break
