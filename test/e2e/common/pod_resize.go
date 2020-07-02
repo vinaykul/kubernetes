@@ -19,10 +19,8 @@ package common
 import (
 	"context"
 	"fmt"
-	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"strconv"
 	"strings"
-	"encoding/json"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -31,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
-	// utilfeature "k8s.io/apiserver/pkg/util/feature"
-	// "k8s.io/component-base/featuregate"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/component-base/featuregate"
 	kubecm "k8s.io/kubernetes/pkg/kubelet/cm"
 
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -43,7 +41,7 @@ import (
 )
 
 const (
-	// InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
+	InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
 
 	CgroupCPUPeriod string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 	CgroupCPUShares string = "/sys/fs/cgroup/cpu/cpu.shares"
@@ -69,6 +67,7 @@ type TestContainerInfo struct {
 	Allocations *ContainerAllocations
 	CPUPolicy   *v1.ContainerResizePolicy
 	MemPolicy   *v1.ContainerResizePolicy
+	RestartCnt	int32
 }
 
 func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
@@ -224,6 +223,9 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		framework.ExpectEqual(found, true)
 		tc := makeTestContainer(ci)
 		framework.ExpectEqual(cs.Resources, tc.Resources)
+
+		// Added by chenw, verify the restart count of the container.
+		framework.ExpectEqual(cs.RestartCount, ci.RestartCnt)
 	}
 }
 
@@ -275,93 +277,14 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	}
 }
 
-// Added by chenw, for obtaining the expected restart count.
-//
-func getExpectedRestarts(pod *v1.Pod, patch string) map[string]int32 {
-	// Add a lambda function to obtain the resize patch map for a particular container
-	getContainerPatch := func (container string) map[string]interface{}{
-		resizeMap := make(map[string]interface{})
-		err := json.Unmarshal([]byte(patch), &resizeMap)
-		if err != nil {
-			return nil
-		}
-
-		containers := resizeMap["spec"].(map[string]interface{})
-		containerResizeList := containers["containers"].([]interface{})
-
-		for _, c := range containerResizeList {
-			cObj := c.(map[string]interface{})
-			if cObj["name"] == container {
-				resourceResize := cObj["resources"].(map[string]interface{})
-				return resourceResize
-			}
-		}
-		return nil
-	}
-
-	// Add a lambda function to check if there is resize patch for a particular resource type(cpu/memory) and size type (limits/requests)
-	hasResize := func (cResizer map[string]interface{}, sizeType string, rscType string) bool {
-		if val, ok := cResizer[sizeType]; ok {
-			rscResizeObj := val.(map[string]interface{})
-			if _, ok := rscResizeObj[rscType]; ok {
-				return true
-			} else {
-				return false
-			}
-		} else {
-			return false
-		}
-	}
-
-	expectedRestartMap := make(map[string]int32)
-	for _, c := range pod.Spec.Containers {
-		cStatus := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, c.Name)
-		cPatch := getContainerPatch(c.Name)
-		if cPatch == nil {
-			continue
-		}
-
-		cRestart := false
-		for _, p := range c.ResizePolicy {
-			rsc := p.ResourceName.String()
-			needsRestart := (p.Policy == v1.RestartContainer)
-			hasPatch := hasResize(cPatch, "limits", rsc) || hasResize(cPatch, "requests", rsc)
-
-			if hasPatch && needsRestart {
-				cRestart = true
-			}
-		}
-
-		if cRestart {
-			expectedRestartMap[c.Name] = cStatus.RestartCount + 1
-		} else {
-			expectedRestartMap[c.Name] = cStatus.RestartCount
-		}
-	}
-	return expectedRestartMap
-}
-
-// Added by chenw, for verifying the expected restart count with the actual restart count.
-func verifyContainerRestarts(pod *v1.Pod, expectedRestarts map[string]int32) {
-	restartMap := make(map[string]int32)
-	for i, c := range pod.Status.ContainerStatuses {
-		restartMap[c.Name] = pod.Status.ContainerStatuses[i].RestartCount
-	}
-	for c, c_expected_restarts := range expectedRestarts {
-		c_restarts, found := restartMap[c]
-		framework.ExpectEqual(found, true)
-		framework.ExpectEqual(c_restarts, c_expected_restarts)
-	}
-}
-
 var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	f := framework.NewDefaultFramework("pod-resize")
 	var podClient *framework.PodClient
 	var ns string
 
-	//if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
+	if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
 	//	return
-	//}
+	}
 
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
@@ -385,6 +308,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "200Mi", MemLim: "200Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -396,6 +320,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "400Mi", MemLim: "400Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -407,6 +332,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "500Mi", MemLim: "500Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -418,6 +344,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "250Mi", MemLim: "250Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -429,18 +356,21 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "100Mi", MemLim: "100Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "200Mi", MemLim: "200Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "300Mi", MemLim: "300Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -454,18 +384,21 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "140m", CPULim: "140m", MemReq: "50Mi", MemLim: "50Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "150m", CPULim: "150m", MemReq: "240Mi", MemLim: "240Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "340m", CPULim: "340m", MemReq: "250Mi", MemLim: "250Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -478,6 +411,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -489,6 +423,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -500,6 +435,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -511,6 +447,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -523,6 +460,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -534,6 +472,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -545,6 +484,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -556,6 +496,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -568,6 +509,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -579,6 +521,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -590,6 +533,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -601,6 +545,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -613,6 +558,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -624,6 +570,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -635,6 +582,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -646,6 +594,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -658,6 +607,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -669,6 +619,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -680,6 +631,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -688,9 +640,10 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{CPUReq: "2m", MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
+					RestartCnt: 0,
 				},
 			},
 		},
@@ -719,9 +672,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 
 			ginkgo.By("verifying pod status resources are as expected")
 			verifyPodStatusResources(pod, tc.containers)
-
-			// added by chenw, obtain the expected restart counts for all containers
-			expected_restarts := getExpectedRestarts(pod, tc.patchString)
 
 			ginkgo.By("patching pod for resize")
 			pPod, pErr := f.ClientSet.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name,
@@ -761,9 +711,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			verifyPodResources(rPod, tc.expected)
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
-
-			// Added by chenw, verify the container restarting count
-			verifyContainerRestarts(pod, expected_restarts)
 
 			ginkgo.By("deleting pod")
 			err = e2epod.DeletePodWithWait(f.ClientSet, pod)
