@@ -213,14 +213,15 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		csMap[c.Name] = &pod.Status.ContainerStatuses[i]
 	}
 
-	cMap := make(map[string]*v1.Container)
-	for i, c := range pod.Spec.Containers {
-		cMap[c.Name] = &pod.Spec.Containers[i]
-	}
-
 	for _, ci := range tcInfo {
 		cs, found := csMap[ci.Name]
 		framework.ExpectEqual(found, true)
+
+		// Fixed by chenw, when creating a container in a pod without specifying the CPUReq,  its Resource.CPUReq automatically became "2m"
+		if ci.Resources.CPUReq == "" {
+			ci.Resources.CPUReq = "2m"
+		}
+
 		tc := makeTestContainer(ci)
 		framework.ExpectEqual(cs.Resources, tc.Resources)
 
@@ -640,7 +641,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			expected: []TestContainerInfo{
 				{
 					Name:      "c1",
-					Resources: &ContainerResources{CPUReq: "2m", MemReq: "128Mi", MemLim: "256Mi"},
+					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
 					CPUPolicy: &noRestart,
 					MemPolicy: &noRestart,
 					RestartCnt: 0,
