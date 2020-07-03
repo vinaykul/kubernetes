@@ -554,7 +554,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 
 	for idx := range tests {
 		tc := tests[idx]
-		setDefault := func(containers []TestContainerInfo) {
+		setDefault := func(containers []TestContainerInfo) []TestContainerInfo{
 			for _, c := range containers {
 				if c.CPUPolicy == nil {
 					c.CPUPolicy = &noRestart
@@ -563,9 +563,10 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 					c.MemPolicy = &noRestart
 				}
 			}
+			return containers
 		}
-		setDefault(tc.containers)
-		setDefault(tc.expected)
+		tc.containers = setDefault(tc.containers)
+		tc.expected = setDefault(tc.expected)
 
 		ginkgo.It(tc.name, func() {
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
