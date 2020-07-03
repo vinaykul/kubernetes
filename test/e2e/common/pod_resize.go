@@ -49,11 +49,9 @@ const (
 	CgroupMemLimit  string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
 
 	PollInterval time.Duration = 2 * time.Second
-	// PollTimeout  time.Duration = time.Minute
 	PollTimeout  time.Duration = 5 * time.Minute
 
-	// Bustable containers without CPU request will have a default "2m" cpu request
-	NotSpecifiedCPUReq = "2m"
+	DefaultMinVerifyCpuRequests = "2m"
 )
 
 type ContainerResources struct {
@@ -70,7 +68,7 @@ type TestContainerInfo struct {
 	Allocations *ContainerAllocations
 	CPUPolicy   *v1.ContainerResizePolicy
 	MemPolicy   *v1.ContainerResizePolicy
-	RestartCnt	int32
+	ExpectedRestartCount	int32
 }
 
 func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
@@ -220,22 +218,15 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		cs, found := csMap[ci.Name]
 		framework.ExpectEqual(found, true)
 
-		// Fixed the testing error for container specifying memory only, added by chenw.
-		// When creating a container in a pod without specifying the CPUReq,  its Resource.CPUReq automatically became "2m"
 		if ci.Resources.CPUReq == "" {
-			ci.Resources.CPUReq = NotSpecifiedCPUReq
-
-			tc := makeTestContainer(ci)
-			framework.ExpectEqual(cs.Resources, tc.Resources)
-
-			ci.Resources.CPUReq = ""
-		} else {
-			tc := makeTestContainer(ci)
-			framework.ExpectEqual(cs.Resources, tc.Resources)
+			ci.Resources.CPUReq = DefaultMinVerifyCpuRequests
+			defer func() {
+				ci.Resources.CPUReq = ""
+			}()
 		}
-
-		// Added by chenw, verify the restart count of the container.
-		framework.ExpectEqual(cs.RestartCount, ci.RestartCnt)
+		tc := makeTestContainer(ci)
+		framework.ExpectEqual(cs.Resources, tc.Resources)
+		framework.ExpectEqual(cs.RestartCount, ci.ExpectedRestartCount)
 	}
 }
 
@@ -268,18 +259,14 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 
 			cpuQuota := kubecm.MilliCPUToQuota(cpuLimit.MilliValue(), kubecm.QuotaPeriod)
 
-			// Added by chenw. Verify the CPU shares only when the pod QoS is guaranteed.
-			//if (pod.Status.QOSClass == v1.PodQOSGuaranteed) {
 			if !cpuLimit.IsZero() || !cpuRequest.IsZero() {
 				verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatInt(cpuShares, 10))
 			}
-			//}
 
 			if !cpuLimit.IsZero() {
 				verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10))
 			}
 
-			// Added by chenw. If memory is not specified, the value in memLimitInBytes would be 0.
 			if (memLimitInBytes > 0) {
 				verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10))
 			}
@@ -299,6 +286,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
 		ns = f.Namespace.Name
+
 	})
 
 	type testCase struct {
@@ -316,9 +304,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "200Mi", MemLim: "200Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -328,9 +313,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "400Mi", MemLim: "400Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -340,9 +322,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "500Mi", MemLim: "500Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -352,9 +331,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "250Mi", MemLim: "250Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -364,23 +340,14 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "100Mi", MemLim: "100Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "200Mi", MemLim: "200Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "300Mi", MemLim: "300Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -392,36 +359,23 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "140m", CPULim: "140m", MemReq: "50Mi", MemLim: "50Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "150m", CPULim: "150m", MemReq: "240Mi", MemLim: "240Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "340m", CPULim: "340m", MemReq: "250Mi", MemLim: "250Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
-		// By chenw, adding E2E test cases 3 for Burstable class single container Pod that specifies both CPU & memory
 		{
 			name: "Bustable class pod, one container - increase CPU & memory requests",
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -431,9 +385,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -443,9 +394,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -455,22 +403,15 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
-		// By chenw, adding E2E test cases 6 for Burstable class single container Pod that specifies both CPU & memory
 		{
 			name: "Bustable class pod, one container - increase CPU & memory limits",
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -480,9 +421,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -492,9 +430,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "400m", MemReq: "128Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -504,22 +439,15 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
-		// By chenw, adding E2E test cases 9 for Burstable class single container Pod that specifies both CPU & memory
 		{
 			name: "Bustable class pod, one container - increase CPU & memory requests & limits",
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -529,9 +457,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -541,9 +466,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m", MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -553,22 +475,15 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m", MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
-		// By chenw, adding E2E test case 3 for Burstable class single container Pod that specifies CPU only
 		{
 			name: "Bustable class pod, one container specifying CPU only - increase CPU requests & limits",
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -578,9 +493,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -590,9 +502,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "400m"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -602,22 +511,15 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "200m"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
-		// By chenw, adding E2E test case 3 for Burstable class single container Pod that specifies memory only
 		{
 			name: "Bustable class pod, one container that specifies memory only - increase memory requests & limits",
 			containers: []TestContainerInfo{
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -627,9 +529,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -639,9 +538,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{MemReq: "256Mi", MemLim: "512Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -651,9 +547,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{MemReq: "128Mi", MemLim: "256Mi"},
-					CPUPolicy: &noRestart,
-					MemPolicy: &noRestart,
-					RestartCnt: 0,
 				},
 			},
 		},
@@ -661,7 +554,17 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 
 	for idx := range tests {
 		tc := tests[idx]
+		setDefault := func(containers []TestContainerInfo) {
+			for _, c := range containers{
+				if c.CPUPolicy == nil {c.CPUPolicy = &noRestart}
+				if c.MemPolicy == nil {c.MemPolicy = &noRestart}
+			}
+		}
+
 		ginkgo.It(tc.name, func() {
+			setDefault(tc.containers)
+			setDefault(tc.expected)
+
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
 			tPod := makeTestPod(ns, "testpod", tStamp, tc.containers)
 
@@ -708,7 +611,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 						// automatically add CPUReq="2m" for the container, thus making diff_log never "".
 						// We need to exclude this for containers that specify memory only.
 						if _, ok := c.Resources.Requests[v1.ResourceCPU]; !ok {
-							c.Resources.Requests[v1.ResourceCPU] = resource.MustParse(NotSpecifiedCPUReq)
+							c.Resources.Requests[v1.ResourceCPU] = resource.MustParse(DefaultMinVerifyCpuRequests)
 						}
 						diff_log := diff.ObjectDiff(c.Resources, pod.Status.ContainerStatuses[idx].Resources)
 						delete(c.Resources.Requests, v1.ResourceCPU)
