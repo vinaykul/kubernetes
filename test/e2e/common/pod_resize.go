@@ -560,11 +560,10 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 				if c.MemPolicy == nil {c.MemPolicy = &noRestart}
 			}
 		}
+		setDefault(tc.containers)
+		setDefault(tc.expected)
 
 		ginkgo.It(tc.name, func() {
-			setDefault(tc.containers)
-			setDefault(tc.expected)
-
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
 			tPod := makeTestPod(ns, "testpod", tStamp, tc.containers)
 
