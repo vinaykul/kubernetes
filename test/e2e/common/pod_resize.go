@@ -63,12 +63,12 @@ type ContainerAllocations struct {
 }
 
 type TestContainerInfo struct {
-	Name        string
-	Resources   *ContainerResources
-	Allocations *ContainerAllocations
-	CPUPolicy   *v1.ContainerResizePolicy
-	MemPolicy   *v1.ContainerResizePolicy
-	ExpectedRestartCount	int32
+	Name                 string
+	Resources            *ContainerResources
+	Allocations          *ContainerAllocations
+	CPUPolicy            *v1.ContainerResizePolicy
+	MemPolicy            *v1.ContainerResizePolicy
+	ExpectedRestartCount int32
 }
 
 func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
@@ -267,7 +267,7 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 				verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10))
 			}
 
-			if (memLimitInBytes > 0) {
+			if memLimitInBytes > 0 {
 				verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10))
 			}
 		}
@@ -280,7 +280,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	var ns string
 
 	if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
-	//	return
+		//	return
 	}
 
 	ginkgo.BeforeEach(func() {
@@ -555,9 +555,13 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 	for idx := range tests {
 		tc := tests[idx]
 		setDefault := func(containers []TestContainerInfo) {
-			for _, c := range containers{
-				if c.CPUPolicy == nil {c.CPUPolicy = &noRestart}
-				if c.MemPolicy == nil {c.MemPolicy = &noRestart}
+			for _, c := range containers {
+				if c.CPUPolicy == nil {
+					c.CPUPolicy = &noRestart
+				}
+				if c.MemPolicy == nil {
+					c.MemPolicy = &noRestart
+				}
 			}
 		}
 		setDefault(tc.containers)
