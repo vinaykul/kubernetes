@@ -302,7 +302,7 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 		expected    []TestContainerInfo
 	}
 
-	noRestart := v1.NoRestart
+	// noRestart := v1.NoRestart
 	tests := []testCase{
 		{
 			name: "Guaranteed QoS pod, one container - increase CPU & memory",
