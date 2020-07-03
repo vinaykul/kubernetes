@@ -302,7 +302,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 		expected    []TestContainerInfo
 	}
 
-	// noRestart := v1.NoRestart
 	tests := []testCase{
 		{
 			name: "Guaranteed QoS pod, one container - increase CPU & memory",
@@ -591,6 +590,8 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			ginkgo.By("verifying pod patched for resize")
 			verifyPodResources(pPod, tc.expected)
 			// verifyPodAllocations(pPod, tc.containers)
+			ginkgo.By("verifying cgroup configuration in containers")
+			verifyPodContainersCgroupConfig(pPod, tc.expected)
 
 			ginkgo.By("verifying pod resources, allocations, and status after resize")
 			waitPodStatusResourcesEqualSpecResources := func() (*v1.Pod, error) {
@@ -625,8 +626,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			rPod, rErr := waitPodStatusResourcesEqualSpecResources()
 			framework.ExpectNoError(rErr, "failed to get pod")
 
-			ginkgo.By("verifying cgroup configuration in containers")
-			verifyPodContainersCgroupConfig(pPod, tc.expected)
 			// verifyPodResources(pPod, tc.expected)
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
