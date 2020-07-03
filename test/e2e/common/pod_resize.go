@@ -117,9 +117,15 @@ func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
 	if tcInfo.CPUPolicy != nil {
 		cpuPol := v1.ResizePolicy{ResourceName: v1.ResourceCPU, Policy: *tcInfo.CPUPolicy}
 		resizePol = append(resizePol, cpuPol)
+	} else {
+		cpuPol := v1.ResizePolicy{ResourceName: v1.ResourceCPU, Policy: v1.NoRestart}
+		resizePol = append(resizePol, cpuPol)
 	}
 	if tcInfo.MemPolicy != nil {
 		memPol := v1.ResizePolicy{ResourceName: v1.ResourceMemory, Policy: *tcInfo.MemPolicy}
+		resizePol = append(resizePol, memPol)
+	} else {
+		memPol := v1.ResizePolicy{ResourceName: v1.ResourceMemory, Policy: v1.NoRestart}
 		resizePol = append(resizePol, memPol)
 	}
 
@@ -554,19 +560,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 
 	for idx := range tests {
 		tc := tests[idx]
-		setDefault := func(containers []TestContainerInfo) []TestContainerInfo{
-			for _, c := range containers {
-				if c.CPUPolicy == nil {
-					c.CPUPolicy = &noRestart
-				}
-				if c.MemPolicy == nil {
-					c.MemPolicy = &noRestart
-				}
-			}
-			return containers
-		}
-		tc.containers = setDefault(tc.containers)
-		tc.expected = setDefault(tc.expected)
 
 		ginkgo.It(tc.name, func() {
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
