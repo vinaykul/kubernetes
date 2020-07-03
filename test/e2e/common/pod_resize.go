@@ -592,9 +592,6 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			verifyPodResources(pPod, tc.expected)
 			// verifyPodAllocations(pPod, tc.containers)
 
-			ginkgo.By("verifying cgroup configuration in containers")
-			verifyPodContainersCgroupConfig(pPod, tc.expected)
-
 			ginkgo.By("verifying pod resources, allocations, and status after resize")
 			waitPodStatusResourcesEqualSpecResources := func() (*v1.Pod, error) {
 				for start := time.Now(); time.Since(start) < PollTimeout; time.Sleep(PollInterval) {
@@ -627,6 +624,9 @@ var _ = ginkgo.Describe("[sig-node] PodInPlaceResize", func() {
 			}
 			rPod, rErr := waitPodStatusResourcesEqualSpecResources()
 			framework.ExpectNoError(rErr, "failed to get pod")
+
+			ginkgo.By("verifying cgroup configuration in containers")
+			verifyPodContainersCgroupConfig(pPod, tc.expected)
 			// verifyPodResources(pPod, tc.expected)
 			verifyPodAllocations(rPod, tc.expected)
 			verifyPodStatusResources(rPod, tc.expected)
