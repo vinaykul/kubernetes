@@ -221,7 +221,14 @@ function start-hollow-nodes {
   # shellcheck disable=SC2154 # Color defined in sourced script
   echo -e "${color_yellow}STARTING SETUP FOR HOLLOW-NODES${color_norm}"
   create-and-upload-hollow-node-image
-  create-kube-hollow-node-resources
+  if [ "${CLOUD_PROVIDER}" = "aws" ]; then
+    (
+      MASTER_IP=${MASTER_INTERNAL_IP}
+      create-kube-hollow-node-resources
+    )
+  else
+    create-kube-hollow-node-resources
+  fi
   wait-for-hollow-nodes-to-run-or-timeout
 }
 
@@ -255,8 +262,13 @@ fi
 MASTER_IP=$(grep server "${HOLLOWNODE_KUBECONFIG}" | awk -F "/" '{print $3}')
 
 start-hollow-nodes
-resize-node-objects
+#resize-node-objects
 
 echo ""
-echo "Master IP: ${MASTER_IP}"
+if [ "${CLOUD_PROVIDER}" = "aws" ]; then
+  echo "Master Public IP: ${MASTER_PUBLIC_IP}"
+  echo "Master Internal IP: ${MASTER_INTERNAL_IP}"
+else
+  echo "Master IP: ${MASTER_IP}"
+fi
 echo "Kubeconfig for kubemark master is written in ${LOCAL_KUBECONFIG}"
