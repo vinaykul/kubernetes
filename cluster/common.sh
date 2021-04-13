@@ -351,7 +351,7 @@ function find-release-tars() {
   fi
   export SERVER_BINARY_TAR
 
-  local find_result
+  local find_result=0
   if [[ "${NUM_WINDOWS_NODES}" -gt "0" ]]; then
     if NODE_BINARY_TAR=$(find-tar kubernetes-node-windows-amd64.tar.gz); then
       find_result=0

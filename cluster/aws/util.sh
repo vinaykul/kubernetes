@@ -53,38 +53,42 @@ TAG_KEY_MASTER_IP="kubernetes.io/master-ip"
 
 OS_DISTRIBUTION=${KUBE_OS_DISTRIBUTION}
 
-# Defaults: ubuntu -> bionic
+# Defaults: ubuntu -> focal
 if [[ "${OS_DISTRIBUTION}" == "ubuntu" ]]; then
-  OS_DISTRIBUTION=bionic
+  OS_DISTRIBUTION=focal
 fi
 
 # Loads the distro-specific utils script.
 # If the distro is not recommended, prints warnings or exits.
 function load_distro_utils () {
 case "${OS_DISTRIBUTION}" in
+  groovy)
+    ;;
+  focal)
+    ;;
   bionic)
     ;;
   xenial)
     ;;
   vivid)
-    echo "vivid is no longer supported by kube-up; please use bionic instead" >&2
+    echo "vivid is no longer supported by kube-up; please use focal instead" >&2
     exit 2
     ;;
   coreos)
-    echo "coreos is no longer supported by kube-up; please use bionic instead" >&2
+    echo "coreos is no longer supported by kube-up; please use focal instead" >&2
     exit 2
     ;;
   trusty)
-    echo "trusty is no longer supported by kube-up; please use bionic instead" >&2
+    echo "trusty is no longer supported by kube-up; please use focal instead" >&2
     exit 2
     ;;
   wheezy)
-    echo "wheezy is no longer supported by kube-up; please use bionic instead" >&2
+    echo "wheezy is no longer supported by kube-up; please use focal instead" >&2
     exit 2
     ;;
   *)
     echo "Cannot start cluster using os distro: ${OS_DISTRIBUTION}" >&2
-    echo "The current recommended distro is bionic" >&2
+    echo "The current recommended distro is focal" >&2
     exit 2
     ;;
 esac
@@ -335,6 +339,12 @@ function detect-security-groups {
 #   AWS_IMAGE
 function detect-image () {
 case "${OS_DISTRIBUTION}" in
+  groovy)
+    detect-groovy-image
+    ;;
+  focal)
+    detect-focal-image
+    ;;
   bionic)
     detect-bionic-image
     ;;
@@ -932,6 +942,13 @@ function subnet-setup {
   fi
 }
 
+function start-mizar-ds {
+  pushd $KUBE_TEMP
+  wget https://raw.githubusercontent.com/CentaurusInfra/mizar/dev-next/etc/deploy/deploy.mizar.components.yaml
+  ${KUBE_ROOT}/cluster/kubectl.sh --kubeconfig=${LOCAL_KUBECONFIG} create -f $KUBE_TEMP/deploy.mizar.components.yaml
+  popd
+}
+
 function start-flannel-ds {
   pushd $KUBE_TEMP
   wget https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
@@ -950,6 +967,9 @@ function start-bridge-networking {
 
 function start-cluster-networking {
   case "${NETWORK_PROVIDER}" in
+    mizar)
+    start-mizar-ds
+    ;;
     flannel)
     start-flannel-ds
     ;;

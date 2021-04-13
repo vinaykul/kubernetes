@@ -51,9 +51,10 @@ function ensure-basic-networking() {
 
 # A hookpoint for installing any needed packages
 ensure-packages() {
+  apt-get update -y
   apt-get-install curl
   # For reading kube_env.yaml
-  apt-get-install python-yaml
+  apt-get install python3-yaml
 
   # TODO: Where to get safe_format_and_mount?
   mkdir -p /usr/share/google
@@ -116,10 +117,10 @@ set-kube-env() {
   local kube_env_yaml="/etc/kubernetes/kube_env.yaml"
 
   # kube-env has all the environment variables we care about, in a flat yaml format
-  eval "$(python -c '
+  eval "$(python3 -c '
 import pipes,sys,yaml
 
-for k,v in yaml.load(sys.stdin).iteritems():
+for k,v in yaml.load(sys.stdin, yaml.FullLoader).items():
   print("""readonly {var}={value}""".format(var = k, value = pipes.quote(str(v))))
   print("""export {var}""".format(var = k))
   ' < """${kube_env_yaml}""")"
@@ -335,6 +336,17 @@ function ensure-apparmor-service() {
   fi
 }
 
+# setup mizar cni config
+function setup-mizar-cni-conf {
+  cat > /etc/cni/net.d/10-mizarcni.conf <<EOF
+{
+    "cniVersion": "0.3.1",
+    "name": "mizarcni",
+    "type": "mizarcni"
+}
+EOF
+}
+
 function setup-flannel-cni-conf() {
   cat > /etc/cni/net.d/10-flannel.conflist <<EOF
 {
@@ -390,6 +402,9 @@ EOF
 function setup-cni-network-conf() {
   mkdir -p /etc/cni/net.d
   case "${NETWORK_PROVIDER:-flannel}" in
+    mizar)
+    setup-mizar-cni-conf
+    ;;
     flannel)
     setup-flannel-cni-conf
     ;;
@@ -420,7 +435,7 @@ function ensure-docker() {
   echo "Installing docker .."
   sudo apt-get install -y apt-transport-https ca-certificates curl
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-  sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  sudo add-apt-repository -y "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
   sudo apt-get update -y
   sudo apt-get install -o DPkg::Options::="--force-confnew" -y docker-ce
   #TODO: Wait loop for docker up
@@ -608,7 +623,7 @@ function setup-user-account() {
   set -e
   if [ $USER_FOUND -ne 0 ]
   then
-    sudo useradd -m ${KUBE_SSH_USER}
+    sudo useradd -m ${KUBE_SSH_USER} -s /bin/bash
     sudo usermod -aG sudo ${KUBE_SSH_USER}
     sudo usermod -aG docker ${KUBE_SSH_USER}
     sudo mkdir -p /home/${KUBE_SSH_USER}/.ssh
@@ -721,7 +736,7 @@ function setup-kubernetes-master() {
     local line2=$(sudo cat /etc/kubernetes/kubeadm-init-log | grep "discovery-token")
     sudo echo "$line1 $line2" > /etc/kubernetes/kubeadm_join_cmd/join_string
     pushd /etc/kubernetes/kubeadm_join_cmd
-    python -m SimpleHTTPServer 8085 &
+    python3 -m http.server 8085 &
     popd
   else
     echo "kubeadm init failed. Error: $?"
@@ -772,6 +787,7 @@ function setup-kubernetes-worker() {
 
 KUBE_CLUSTER_AUTOSCALER_TOKEN="$(secure_random 32)"
 ADDON_MANAGER_TOKEN="$(secure_random 32)"
+export DEBIAN_FRONTEND=noninteractive
 
 if [[ -z "${is_push}" ]]; then
   echo "== kube-up node config starting =="
