@@ -2049,6 +2049,33 @@ const (
 	PullIfNotPresent PullPolicy = "IfNotPresent"
 )
 
+// ContainerResizePolicy lets users specify how to handle container resize.
+// Only one of the following container resize policies may be specified.
+// If not specified, it defaults to 'RestartNotRequired'.
+type ContainerResizePolicy string
+
+// These are the valid container resize policy values:
+// 'RestartNotRequired' (default) tells Kubelet to call UpdateContainerResources
+// CRI API to resize the resources without restarting the container, if possible.
+// 'Restart' tells Kubelet to stop and start the container with when new resources
+// are applied. This is needed for legacy applications e.g. java apps using -xmxN
+// flag which are unable to use the resized memory without restarting.
+const (
+	// Resize the container in-place without restarting it.
+	RestartNotRequired ContainerResizePolicy = "RestartNotRequired"
+	// Resize the container in-place by restarting it.
+	Restart ContainerResizePolicy = "Restart"
+)
+
+// ResizePolicy represents the resource resize policy for a single container.
+type ResizePolicy struct {
+	// Name of the resource type to which this resize policy applies.
+	// Supported values: cpu, memory.
+	ResourceName ResourceName
+	// Container resize policy applicable to the above resource.
+	Policy ContainerResizePolicy
+}
+
 // PreemptionPolicy describes a policy for if/when to preempt a pod.
 type PreemptionPolicy string
 
@@ -2138,6 +2165,9 @@ type Container struct {
 	// Compute resource requirements.
 	// +optional
 	Resources ResourceRequirements
+	// Resources resize policy for the container.
+	// +optional
+	ResizePolicy []ResizePolicy
 	// +optional
 	VolumeMounts []VolumeMount
 	// volumeDevices is the list of block devices to be used by the container.
@@ -2288,6 +2318,12 @@ type ContainerStatus struct {
 	// +optional
 	ContainerID string
 	Started     *bool
+	// Node compute resources allocated for the container.
+	// +optional
+	ResourcesAllocated ResourceList
+	// Compute resource requests and limits enacted on the running container.
+	// +optional
+	Resources ResourceRequirements
 }
 
 // PodPhase is a label for the condition of a pod at the current time.
@@ -2346,6 +2382,20 @@ type PodCondition struct {
 	// +optional
 	Message string
 }
+
+// ResourcesResizeStatus shows status of resources resize of a pod's containers.
+type ResourcesResizeStatus string
+
+const (
+	// Pod resources resize has been requested and will be evaluated by node.
+	Proposed ResourcesResizeStatus = "Proposed"
+	// Pod resources resize has been accepted by node and is being actuated.
+	InProgress ResourcesResizeStatus = "InProgress"
+	// Node cannot resize the pod at this time and will keep retrying.
+	Deferred ResourcesResizeStatus = "Deferred"
+	// Requested pod resize is not feasible and will not be re-evaluated.
+	Infeasible ResourcesResizeStatus = "Infeasible"
+)
 
 // RestartPolicy describes how the container should be restarted.
 // Only one of the following restart policies may be specified.
@@ -3119,6 +3169,9 @@ type EphemeralContainerCommon struct {
 	// already allocated to the pod.
 	// +optional
 	Resources ResourceRequirements
+	// Resources resize policy for the container.
+	// +optional
+	ResizePolicy []ResizePolicy
 	// +optional
 	VolumeMounts []VolumeMount
 	// volumeDevices is the list of block devices to be used by the container.
@@ -3237,6 +3290,11 @@ type PodStatus struct {
 	// This field is alpha-level and is only honored by servers that enable the EphemeralContainers feature.
 	// +optional
 	EphemeralContainerStatuses []ContainerStatus
+
+	// Status of a resources resize request for pod's containers.
+	// It is empty if no resources resize is pending.
+	// +optional
+	Resize ResourcesResizeStatus
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

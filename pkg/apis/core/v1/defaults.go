@@ -173,6 +173,29 @@ func SetDefaults_Pod(obj *v1.Pod) {
 			}
 		}
 	}
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		// Set ResizePolicy to default values, if not specified.
+		for i := range obj.Spec.Containers {
+			resources := make(map[v1.ResourceName]bool)
+			for _, p := range obj.Spec.Containers[i].ResizePolicy {
+				resources[p.ResourceName] = true
+			}
+			if _, found := resources[v1.ResourceCPU]; !found {
+				obj.Spec.Containers[i].ResizePolicy = append(obj.Spec.Containers[i].ResizePolicy,
+					v1.ResizePolicy{
+						ResourceName: v1.ResourceCPU,
+						Policy:       v1.RestartNotRequired,
+					})
+			}
+			if _, found := resources[v1.ResourceMemory]; !found {
+				obj.Spec.Containers[i].ResizePolicy = append(obj.Spec.Containers[i].ResizePolicy,
+					v1.ResizePolicy{
+						ResourceName: v1.ResourceMemory,
+						Policy:       v1.RestartNotRequired,
+					})
+			}
+		}
+	}
 	if obj.Spec.EnableServiceLinks == nil {
 		enableServiceLinks := v1.DefaultEnableServiceLinks
 		obj.Spec.EnableServiceLinks = &enableServiceLinks
