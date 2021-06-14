@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -698,4 +699,140 @@ func TestShouldRecordEvent(t *testing.T) {
 	var nilObj *v1.ObjectReference = nil
 	_, actual = innerEventRecorder.shouldRecordEvent(nilObj)
 	assert.Equal(t, false, actual, "should not panic if the typed nil was used, see https://github.com/kubernetes/kubernetes/issues/95552")
+}
+
+func TestHashContainerWithResources(t *testing.T) {
+	cpu100m := resource.MustParse("100m")
+	cpu200m := resource.MustParse("200m")
+	mem100M := resource.MustParse("100Mi")
+	mem200M := resource.MustParse("200Mi")
+	cpuPolicyRestartNotRequired := v1.ContainerResizePolicy{ResourceName: v1.ResourceCPU, Policy: v1.RestartNotRequired}
+	memPolicyRestartNotRequired := v1.ContainerResizePolicy{ResourceName: v1.ResourceMemory, Policy: v1.RestartNotRequired}
+	cpuPolicyRestartRequired := v1.ContainerResizePolicy{ResourceName: v1.ResourceCPU, Policy: v1.RestartRequired}
+	memPolicyRestartRequired := v1.ContainerResizePolicy{ResourceName: v1.ResourceMemory, Policy: v1.RestartRequired}
+
+	type testCase struct {
+		container    *v1.Container
+		scalingFg    bool
+		expectedHash uint64
+	}
+	tests := []testCase{
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired},
+			},
+			false,
+			0xbac0acaa,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired},
+			},
+			false,
+			0xf51282dc,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired},
+			},
+			false,
+			0xc46c65ba,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired},
+			},
+			false,
+			0x542898ec,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired},
+			},
+			true,
+			0x86a4393c,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired},
+			},
+			true,
+			0x73a18cce,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired},
+			},
+			true,
+			0x86a4393c,
+		},
+		{
+			&v1.Container{
+				Name:  "foo",
+				Image: "bar",
+				Resources: v1.ResourceRequirements{
+					Limits:   v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+					Requests: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
+				},
+				ResizePolicy: []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired},
+			},
+			true,
+			0x73a18cce,
+		},
+	}
+
+	testFunc := func(idx int, tc testCase) {
+		if tc.scalingFg {
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodVerticalScaling, true)()
+		}
+		containerCopy := tc.container.DeepCopy()
+		hash := HashContainer(tc.container)
+		assert.Equal(t, tc.expectedHash, hash, "[%d]", idx)
+		assert.Equal(t, containerCopy, tc.container, "[%d]", idx)
+	}
+	for i, tc := range tests {
+		testFunc(i, tc)
+	}
 }

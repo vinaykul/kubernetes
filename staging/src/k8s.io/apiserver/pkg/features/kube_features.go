@@ -192,6 +192,14 @@ const (
 	//
 	// Enables kubernetes to publish OpenAPI v3
 	OpenAPIV3 featuregate.Feature = "OpenAPIV3"
+
+	// owner: @vinaykul
+	// kep: http://kep.k8s.io/1287
+	// kep: http://kep.k8s.io/2273
+	// alpha: v1.22
+	//
+	// Enables In-Place Pod Vertical Scaling
+	InPlacePodVerticalScaling featuregate.Feature = "InPlacePodVerticalScaling"
 )
 
 func init() {
@@ -223,4 +231,5 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	OpenAPIEnums:                        {Default: false, PreRelease: featuregate.Alpha},
 	CustomResourceValidationExpressions: {Default: false, PreRelease: featuregate.Alpha},
 	OpenAPIV3:                           {Default: false, PreRelease: featuregate.Alpha},
+	InPlacePodVerticalScaling:           {Default: false, PreRelease: featuregate.Alpha},
 }

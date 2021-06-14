@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	container "k8s.io/kubernetes/pkg/kubelet/container"
+	state "k8s.io/kubernetes/pkg/kubelet/status/state"
 	reflect "reflect"
 )
 
@@ -211,4 +212,46 @@ func (m *MockManager) RemoveOrphanedStatuses(podUIDs map[types.UID]bool) {
 func (mr *MockManagerMockRecorder) RemoveOrphanedStatuses(podUIDs interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveOrphanedStatuses", reflect.TypeOf((*MockManager)(nil).RemoveOrphanedStatuses), podUIDs)
+}
+
+// State mocks base method
+func (m *MockManager) State() state.Reader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "State")
+	ret0, _ := ret[0].(state.Reader)
+	return ret0
+}
+
+// State indicates an expected call of State
+func (mr *MockManagerMockRecorder) State() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "State", reflect.TypeOf((*MockManager)(nil).State))
+}
+
+// SetPodAllocation mocks base method
+func (m *MockManager) SetPodAllocation(pod *v1.Pod) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetPodAllocation", pod)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetPodAllocation indicates an expected call of SetPodAllocation
+func (mr *MockManagerMockRecorder) SetPodAllocation(pod interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPodAllocation", reflect.TypeOf((*MockManager)(nil).SetPodAllocation), pod)
+}
+
+// SetPodResizeStatus mocks base method
+func (m *MockManager) SetPodResizeStatus(podUID types.UID, resize v1.PodResizeStatus) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetPodResizeStatus", podUID, resize)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetPodResizeStatus indicates an expected call of SetPodResizeStatus
+func (mr *MockManagerMockRecorder) SetPodResizeStatus(podUID, resize interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetPodResizeStatus", reflect.TypeOf((*MockManager)(nil).SetPodResizeStatus), podUID, resize)
 }

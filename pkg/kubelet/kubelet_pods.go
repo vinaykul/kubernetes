@@ -36,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -1217,12 +1218,12 @@ func (kl *Kubelet) HandlePodCleanups() error {
 func (kl *Kubelet) validateContainerLogStatus(podName string, podStatus *v1.PodStatus, containerName string, previous bool) (containerID kubecontainer.ContainerID, err error) {
 	var cID string
 
-	cStatus, found := podutil.GetContainerStatus(podStatus.ContainerStatuses, containerName)
+	_, cStatus, found := podutil.GetContainerStatus(podStatus.ContainerStatuses, containerName)
 	if !found {
-		cStatus, found = podutil.GetContainerStatus(podStatus.InitContainerStatuses, containerName)
+		_, cStatus, found = podutil.GetContainerStatus(podStatus.InitContainerStatuses, containerName)
 	}
 	if !found && utilfeature.DefaultFeatureGate.Enabled(features.EphemeralContainers) {
-		cStatus, found = podutil.GetContainerStatus(podStatus.EphemeralContainerStatuses, containerName)
+		_, cStatus, found = podutil.GetContainerStatus(podStatus.EphemeralContainerStatuses, containerName)
 	}
 	if !found {
 		return kubecontainer.ContainerID{}, fmt.Errorf("container %q in pod %q is not available", containerName, podName)
@@ -1335,7 +1336,7 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 	pendingInitialization := 0
 	failedInitialization := 0
 	for _, container := range spec.InitContainers {
-		containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
+		_, containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
 		if !ok {
 			pendingInitialization++
 			continue
@@ -1367,7 +1368,7 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 	stopped := 0
 	succeeded := 0
 	for _, container := range spec.Containers {
-		containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
+		_, containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
 		if !ok {
 			unknown++
 			continue
@@ -1595,6 +1596,30 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 		len(pod.Spec.InitContainers) > 0,
 		false,
 	)
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		//TODO(vinaykul): Move this code into a GenerateXXX function
+		specStatusDiffer := false
+		for _, c := range pod.Spec.Containers {
+			if _, cs, ok := podutil.GetContainerStatus(apiPodStatus.ContainerStatuses, c.Name); ok {
+				if cs.Resources != nil && diff.ObjectDiff(c.Resources, *cs.Resources) != "" {
+					specStatusDiffer = true
+					break
+				}
+			}
+		}
+		if !specStatusDiffer {
+			// Clear last resize state from checkpoint
+			if err := kl.statusManager.SetPodResizeStatus(pod.UID, ""); err != nil {
+				//TODO(vinaykul): Can we recover from this in some way? Investigate
+				klog.ErrorS(err, "SetPodResizeStatus failed", "pod", pod.Name)
+			}
+		} else {
+			checkpointState := kl.statusManager.State()
+			if resizeStatus, found := checkpointState.GetPodResizeStatus(string(pod.UID)); found {
+				apiPodStatus.Resize = resizeStatus
+			}
+		}
+	}
 	apiPodStatus.InitContainerStatuses = kl.convertToAPIContainerStatuses(
 		pod, podStatus,
 		oldPodStatus.InitContainerStatuses,
@@ -1803,6 +1828,75 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 			oldStatusPtr = &oldStatus
 		}
 		status := convertContainerStatus(cStatus, oldStatusPtr)
+		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+			//TODO(vinaykul): Move this code into a GenerateXXX function
+			if status.State.Running != nil {
+				var requests, limits v1.ResourceList
+				// oldStatus should always exist if container is running
+				oldStatus, oldStatusFound := oldStatuses[cName]
+				// Set initial limits/requests from container's spec upon transition to Running state
+				// For cpu & memory, limits queried from runtime via CRI always supercedes spec.limit
+				// For ephemeral-storage, a running container's status.limit/request equals spec.limit/request
+				determineResource := func(rName v1.ResourceName, kubeContainerStatusResource, v1ContainerResource, oldStatusResource, resource v1.ResourceList) {
+					if r, found := kubeContainerStatusResource[rName]; found {
+						resource[rName] = r.DeepCopy()
+						return
+					}
+					if oldStatusFound {
+						if oldStatus.State.Running == nil || status.ContainerID != oldStatus.ContainerID {
+							if r, exists := v1ContainerResource[rName]; exists {
+								resource[rName] = r.DeepCopy()
+							}
+						} else {
+							if oldStatusResource != nil {
+								if r, exists := oldStatusResource[rName]; exists {
+									resource[rName] = r.DeepCopy()
+								}
+							}
+						}
+					}
+				}
+				container := kubecontainer.GetContainerSpec(pod, cName)
+				// Read ResourcesAllocated from checkpoint. It is the source-of-truth.
+				found := false
+				checkpointState := kl.statusManager.State()
+				status.ResourcesAllocated, found = checkpointState.GetContainerResourceAllocation(string(pod.UID), cName)
+				if !(container.Resources.Requests == nil && container.Resources.Limits == nil) && !found {
+					// Log error and fallback to ResourcesAllocated in oldStatus if it exists
+					klog.ErrorS(nil, "resource allocation not found in checkpoint store", "pod", pod.Name, "container", cName)
+					if oldStatusFound {
+						status.ResourcesAllocated = oldStatus.ResourcesAllocated
+					}
+				}
+				if oldStatus.Resources == nil {
+					oldStatus.Resources = &v1.ResourceRequirements{}
+				}
+				// Determine Limits
+				if container.Resources.Limits != nil {
+					limits = make(v1.ResourceList)
+					determineResource(v1.ResourceCPU, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					determineResource(v1.ResourceMemory, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					if ephemeralStorage, found := container.Resources.Limits[v1.ResourceEphemeralStorage]; found {
+						limits[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
+					}
+				}
+				// Determine Requests
+				if status.ResourcesAllocated != nil {
+					requests = make(v1.ResourceList)
+					determineResource(v1.ResourceCPU, cStatus.Resources.Requests, status.ResourcesAllocated, oldStatus.Resources.Requests, requests)
+					if memory, found := status.ResourcesAllocated[v1.ResourceMemory]; found {
+						requests[v1.ResourceMemory] = memory.DeepCopy()
+					}
+					if ephemeralStorage, found := status.ResourcesAllocated[v1.ResourceEphemeralStorage]; found {
+						requests[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
+					}
+				}
+				status.Resources = &v1.ResourceRequirements{
+					Limits:   limits,
+					Requests: requests,
+				}
+			}
+		}
 		if containerSeen[cName] == 0 {
 			statuses[cName] = status
 		} else {

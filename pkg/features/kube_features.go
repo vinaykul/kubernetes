@@ -791,6 +791,14 @@ const (
 	// node affinity, selector and tolerations. This is allowed only for suspended jobs
 	// that have never been unsuspended before.
 	JobMutableNodeSchedulingDirectives featuregate.Feature = "JobMutableNodeSchedulingDirectives"
+
+	// owner: @vinaykul
+	// kep: http://kep.k8s.io/1287
+	// kep: http://kep.k8s.io/2273
+	// alpha: v1.23
+	//
+	// Enables In-Place Pod Vertical Scaling
+	InPlacePodVerticalScaling featuregate.Feature = "InPlacePodVerticalScaling"
 )
 
 func init() {
@@ -907,6 +915,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CPUManagerPolicyBetaOptions:                    {Default: true, PreRelease: featuregate.Beta},
 	JobMutableNodeSchedulingDirectives:             {Default: true, PreRelease: featuregate.Beta},
 	IdentifyPodOS:                                  {Default: false, PreRelease: featuregate.Alpha},
+	InPlacePodVerticalScaling:                      {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:

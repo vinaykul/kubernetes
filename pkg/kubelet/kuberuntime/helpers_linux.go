@@ -19,6 +19,10 @@ limitations under the License.
 
 package kuberuntime
 
+import (
+	"math"
+)
+
 const (
 	// Taken from lmctfy https://github.com/google/lmctfy/blob/master/lmctfy/controllers/cpu_controller.cc
 	minShares     = 2
@@ -65,4 +69,23 @@ func milliCPUToQuota(milliCPU int64, period int64) (quota int64) {
 	}
 
 	return
+}
+
+// sharesToMilliCPU converts CpuShares (cpu.shares) to milli-CPU value
+//TODO(vinaykul): Address issue that sets min req/limi to 2m/10m before beta
+//  See: https://github.com/kubernetes/kubernetes/pull/102884#discussion_r662552642
+func sharesToMilliCPU(shares int64) int64 {
+	milliCPU := int64(0)
+	if shares >= minShares {
+		milliCPU = int64(math.Ceil(float64(shares*milliCPUToCPU) / float64(sharesPerCPU)))
+	}
+	return milliCPU
+}
+
+// quotaToMilliCPU converts cpu.cfs_quota_us and cpu.cfs_period_us to milli-CPU value
+func quotaToMilliCPU(quota int64, period int64) int64 {
+	if quota == -1 {
+		return int64(0)
+	}
+	return (quota * milliCPUToCPU) / period
 }

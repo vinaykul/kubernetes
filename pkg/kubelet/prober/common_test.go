@@ -17,6 +17,7 @@ limitations under the License.
 package prober
 
 import (
+	"io/ioutil"
 	"reflect"
 	"sync"
 
@@ -107,8 +108,14 @@ func newTestManager() *manager {
 	podManager := kubepod.NewBasicPodManager(nil, nil, nil)
 	// Add test pod to pod manager, so that status manager can get the pod from pod manager if needed.
 	podManager.AddPod(getTestPod())
+	testRootDir := ""
+	if tempDir, err := ioutil.TempDir("", "kubelet_test."); err != nil {
+		return nil
+	} else {
+		testRootDir = tempDir
+	}
 	m := NewManager(
-		status.NewManager(&fake.Clientset{}, podManager, &statustest.FakePodDeletionSafetyProvider{}),
+		status.NewManager(&fake.Clientset{}, podManager, &statustest.FakePodDeletionSafetyProvider{}, testRootDir),
 		results.NewManager(),
 		results.NewManager(),
 		results.NewManager(),

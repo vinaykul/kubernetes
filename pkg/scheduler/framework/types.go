@@ -29,8 +29,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	quota "k8s.io/apiserver/pkg/quota/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/features"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 )
@@ -715,8 +717,26 @@ func max(a, b int64) int64 {
 func calculateResource(pod *v1.Pod) (res Resource, non0CPU int64, non0Mem int64) {
 	resPtr := &res
 	for _, c := range pod.Spec.Containers {
-		resPtr.Add(c.Resources.Requests)
-		non0CPUReq, non0MemReq := schedutil.GetNonzeroRequests(&c.Resources.Requests)
+		var non0CPUReq, non0MemReq int64
+		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+			_, cs, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, c.Name)
+			if found {
+				if pod.Status.Resize == v1.PodResizeStatusInfeasible {
+					resPtr.Add(cs.ResourcesAllocated)
+					non0CPUReq, non0MemReq = schedutil.GetNonzeroRequests(&cs.ResourcesAllocated)
+				} else {
+					maxReqAlloc := quota.Max(c.Resources.Requests, cs.ResourcesAllocated)
+					resPtr.Add(maxReqAlloc)
+					non0CPUReq, non0MemReq = schedutil.GetNonzeroRequests(&maxReqAlloc)
+				}
+			} else {
+				resPtr.Add(c.Resources.Requests)
+				non0CPUReq, non0MemReq = schedutil.GetNonzeroRequests(&c.Resources.Requests)
+			}
+		} else {
+			resPtr.Add(c.Resources.Requests)
+			non0CPUReq, non0MemReq = schedutil.GetNonzeroRequests(&c.Resources.Requests)
+		}
 		non0CPU += non0CPUReq
 		non0Mem += non0MemReq
 		// No non-zero resources for GPUs or opaque resources.

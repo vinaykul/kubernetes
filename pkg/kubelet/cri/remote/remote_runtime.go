@@ -349,14 +349,15 @@ func (r *remoteRuntimeService) ContainerStatus(containerID string) (*runtimeapi.
 }
 
 // UpdateContainerResources updates a containers resource config
-func (r *remoteRuntimeService) UpdateContainerResources(containerID string, resources *runtimeapi.LinuxContainerResources) error {
+func (r *remoteRuntimeService) UpdateContainerResources(containerID string, resources *runtimeapi.ContainerResources) error {
 	klog.V(10).InfoS("[RemoteRuntimeService] UpdateContainerResources", "containerID", containerID, "timeout", r.timeout)
 	ctx, cancel := getContextWithTimeout(r.timeout)
 	defer cancel()
 
 	_, err := r.runtimeClient.UpdateContainerResources(ctx, &runtimeapi.UpdateContainerResourcesRequest{
 		ContainerId: containerID,
-		Linux:       resources,
+		Linux:       resources.GetLinux(),
+		Windows:     resources.GetWindows(),
 	})
 	if err != nil {
 		klog.ErrorS(err, "UpdateContainerResources from runtime service failed", "containerID", containerID)
