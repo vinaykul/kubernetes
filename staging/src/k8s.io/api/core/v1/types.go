@@ -2146,6 +2146,33 @@ const (
 	PullIfNotPresent PullPolicy = "IfNotPresent"
 )
 
+// ContainerResizePolicy lets users specify how to handle container resize.
+// Only one of the following container resize policies may be specified.
+// If not specified, it defaults to 'RestartNotRequired'.
+type ContainerResizePolicy string
+
+// These are the valid container resize policy values:
+// 'RestartNotRequired' (default) tells Kubelet to call UpdateContainerResources
+// CRI API to resize the resources without restarting the container, if possible.
+// 'Restart' tells Kubelet to stop and start the container with when new resources
+// are applied. This is needed for legacy applications e.g. java apps using -xmxN
+// flag which are unable to use the resized memory without restarting.
+const (
+	// Resize the container in-place without restarting it.
+	RestartNotRequired ContainerResizePolicy = "RestartNotRequired"
+	// Resize the container in-place by restarting it.
+	Restart ContainerResizePolicy = "Restart"
+)
+
+// ResizePolicy represents the resource resize policy for a single container.
+type ResizePolicy struct {
+	// Name of the resource type to which this resize policy applies.
+	// Supported values: cpu, memory.
+	ResourceName ResourceName `json:"resourceName" protobuf:"bytes,1,opt,name=resourceName,casttype=ResourceName"`
+	// Container resize policy applicable to the above resource.
+	Policy ContainerResizePolicy `json:"policy" protobuf:"bytes,2,opt,name=policy,casttype=ContainerResizePolicy"`
+}
+
 // PreemptionPolicy describes a policy for if/when to preempt a pod.
 type PreemptionPolicy string
 
@@ -2272,6 +2299,9 @@ type Container struct {
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	// +optional
 	Resources ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,8,opt,name=resources"`
+	// Resources resize policy for the container.
+	// +optional
+	ResizePolicy []ResizePolicy `json:"resizePolicy,omitempty" protobuf:"bytes,23,rep,name=resizePolicy"`
 	// Pod volumes to mount into the container's filesystem.
 	// Cannot be updated.
 	// +optional
@@ -2504,6 +2534,12 @@ type ContainerStatus struct {
 	// Is always true when no startupProbe is defined.
 	// +optional
 	Started *bool `json:"started,omitempty" protobuf:"varint,9,opt,name=started"`
+	// Node compute resources allocated for the container.
+	// +optional
+	ResourcesAllocated ResourceList `json:"resourcesAllocated,omitempty" protobuf:"bytes,10,rep,name=resourcesAllocated,casttype=ResourceList,castkey=ResourceName"`
+	// Compute resource requests and limits enacted on the running container.
+	// +optional
+	Resources ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,11,opt,name=resources"`
 }
 
 // PodPhase is a label for the condition of a pod at the current time.
@@ -2575,6 +2611,20 @@ type PodCondition struct {
 	// +optional
 	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
 }
+
+// ResourcesResizeStatus shows status of resources resize of a pod's containers.
+type ResourcesResizeStatus string
+
+const (
+	// Pod resources resize has been requested and will be evaluated by node.
+	Proposed ResourcesResizeStatus = "Proposed"
+	// Pod resources resize has been accepted by node and is being actuated.
+	InProgress ResourcesResizeStatus = "InProgress"
+	// Node cannot resize the pod at this time and will keep retrying.
+	Deferred ResourcesResizeStatus = "Deferred"
+	// Requested pod resize is not feasible and will not be re-evaluated.
+	Infeasible ResourcesResizeStatus = "Infeasible"
+)
 
 // RestartPolicy describes how the container should be restarted.
 // Only one of the following restart policies may be specified.
@@ -3477,6 +3527,9 @@ type EphemeralContainerCommon struct {
 	// already allocated to the pod.
 	// +optional
 	Resources ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,8,opt,name=resources"`
+	// Resources resize policy for the container.
+	// +optional
+	ResizePolicy []ResizePolicy `json:"resizePolicy,omitempty" protobuf:"bytes,23,rep,name=resizePolicy"`
 	// Pod volumes to mount into the container's filesystem.
 	// Cannot be updated.
 	// +optional
@@ -3668,6 +3721,11 @@ type PodStatus struct {
 	// This field is alpha-level and is only populated by servers that enable the EphemeralContainers feature.
 	// +optional
 	EphemeralContainerStatuses []ContainerStatus `json:"ephemeralContainerStatuses,omitempty" protobuf:"bytes,13,rep,name=ephemeralContainerStatuses"`
+
+	// Status of a resources resize request for pod's containers.
+	// It is empty if no resources resize is pending.
+	// +optional
+	Resize ResourcesResizeStatus `json:"resize,omitempty" protobuf:"bytes,14,opt,name=resize,casttype=ResourcesResizeStatus"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
