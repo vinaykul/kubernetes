@@ -685,6 +685,10 @@ message Container {
   // +optional
   optional ResourceRequirements resources = 8;
 
+  // Resources resize policy for the container.
+  // +optional
+  repeated ResizePolicy resizePolicy = 23;
+
   // Pod volumes to mount into the container's filesystem.
   // Cannot be updated.
   // +optional
@@ -931,6 +935,14 @@ message ContainerStatus {
   // Is always true when no startupProbe is defined.
   // +optional
   optional bool started = 9;
+
+  // Node compute resources allocated for the container.
+  // +optional
+  map<string, k8s.io.apimachinery.pkg.api.resource.Quantity> resourcesAllocated = 10;
+
+  // Compute resource requests and limits enacted on the running container.
+  // +optional
+  optional ResourceRequirements resources = 11;
 }
 
 // DaemonEndpoint contains information about a single Daemon endpoint.
@@ -1280,6 +1292,10 @@ message EphemeralContainerCommon {
   // already allocated to the pod.
   // +optional
   optional ResourceRequirements resources = 8;
+
+  // Resources resize policy for the container.
+  // +optional
+  repeated ResizePolicy resizePolicy = 23;
 
   // Pod volumes to mount into the container's filesystem.
   // Cannot be updated.
@@ -3721,6 +3737,11 @@ message PodStatus {
   // This field is alpha-level and is only populated by servers that enable the EphemeralContainers feature.
   // +optional
   repeated ContainerStatus ephemeralContainerStatuses = 13;
+
+  // Status of a resources resize request for pod's containers.
+  // It is empty if no resources resize is pending.
+  // +optional
+  optional string resize = 14;
 }
 
 // PodStatusResult is a wrapper for PodStatus returned by kubelet that can be encode/decoded
@@ -4174,6 +4195,16 @@ message ReplicationControllerStatus {
   // +patchMergeKey=type
   // +patchStrategy=merge
   repeated ReplicationControllerCondition conditions = 6;
+}
+
+// ResizePolicy represents the resource resize policy for a single container.
+message ResizePolicy {
+  // Name of the resource type to which this resize policy applies.
+  // Supported values: cpu, memory.
+  optional string resourceName = 1;
+
+  // Container resize policy applicable to the above resource.
+  optional string policy = 2;
 }
 
 // ResourceFieldSelector represents container resources (cpu, memory) and their output format

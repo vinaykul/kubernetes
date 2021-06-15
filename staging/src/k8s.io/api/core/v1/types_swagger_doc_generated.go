@@ -335,6 +335,7 @@ var map_Container = map[string]string{
 	"envFrom":                  "List of sources to populate environment variables in the container. The keys defined within a source must be a C_IDENTIFIER. All invalid keys will be reported as an event when the container is starting. When a key exists in multiple sources, the value associated with the last source will take precedence. Values defined by an Env with a duplicate key will take precedence. Cannot be updated.",
 	"env":                      "List of environment variables to set in the container. Cannot be updated.",
 	"resources":                "Compute Resources required by this container. Cannot be updated. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+	"resizePolicy":             "Resources resize policy for the container.",
 	"volumeMounts":             "Pod volumes to mount into the container's filesystem. Cannot be updated.",
 	"volumeDevices":            "volumeDevices is the list of block devices to be used by the container.",
 	"livenessProbe":            "Periodic probe of container liveness. Container will be restarted if the probe fails. Cannot be updated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
@@ -423,16 +424,18 @@ func (ContainerStateWaiting) SwaggerDoc() map[string]string {
 }
 
 var map_ContainerStatus = map[string]string{
-	"":             "ContainerStatus contains details for the current status of this container.",
-	"name":         "This must be a DNS_LABEL. Each container in a pod must have a unique name. Cannot be updated.",
-	"state":        "Details about the container's current condition.",
-	"lastState":    "Details about the container's last termination condition.",
-	"ready":        "Specifies whether the container has passed its readiness probe.",
-	"restartCount": "The number of times the container has been restarted, currently based on the number of dead containers that have not yet been removed. Note that this is calculated from dead containers. But those containers are subject to garbage collection. This value will get capped at 5 by GC.",
-	"image":        "The image the container is running. More info: https://kubernetes.io/docs/concepts/containers/images",
-	"imageID":      "ImageID of the container's image.",
-	"containerID":  "Container's ID in the format 'docker://<container_id>'.",
-	"started":      "Specifies whether the container has passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. Is always true when no startupProbe is defined.",
+	"":                   "ContainerStatus contains details for the current status of this container.",
+	"name":               "This must be a DNS_LABEL. Each container in a pod must have a unique name. Cannot be updated.",
+	"state":              "Details about the container's current condition.",
+	"lastState":          "Details about the container's last termination condition.",
+	"ready":              "Specifies whether the container has passed its readiness probe.",
+	"restartCount":       "The number of times the container has been restarted, currently based on the number of dead containers that have not yet been removed. Note that this is calculated from dead containers. But those containers are subject to garbage collection. This value will get capped at 5 by GC.",
+	"image":              "The image the container is running. More info: https://kubernetes.io/docs/concepts/containers/images",
+	"imageID":            "ImageID of the container's image.",
+	"containerID":        "Container's ID in the format 'docker://<container_id>'.",
+	"started":            "Specifies whether the container has passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. Is always true when no startupProbe is defined.",
+	"resourcesAllocated": "Node compute resources allocated for the container.",
+	"resources":          "Compute resource requests and limits enacted on the running container.",
 }
 
 func (ContainerStatus) SwaggerDoc() map[string]string {
@@ -598,6 +601,7 @@ var map_EphemeralContainerCommon = map[string]string{
 	"envFrom":                  "List of sources to populate environment variables in the container. The keys defined within a source must be a C_IDENTIFIER. All invalid keys will be reported as an event when the container is starting. When a key exists in multiple sources, the value associated with the last source will take precedence. Values defined by an Env with a duplicate key will take precedence. Cannot be updated.",
 	"env":                      "List of environment variables to set in the container. Cannot be updated.",
 	"resources":                "Resources are not allowed for ephemeral containers. Ephemeral containers use spare resources already allocated to the pod.",
+	"resizePolicy":             "Resources resize policy for the container.",
 	"volumeMounts":             "Pod volumes to mount into the container's filesystem. Cannot be updated.",
 	"volumeDevices":            "volumeDevices is the list of block devices to be used by the container.",
 	"livenessProbe":            "Probes are not allowed for ephemeral containers.",
@@ -1669,6 +1673,7 @@ var map_PodStatus = map[string]string{
 	"containerStatuses":          "The list has one entry per container in the manifest. Each entry is currently the output of `docker inspect`. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-and-container-status",
 	"qosClass":                   "The Quality of Service (QOS) classification assigned to the pod based on resource requirements See PodQOSClass type for available QOS classes More info: https://git.k8s.io/community/contributors/design-proposals/node/resource-qos.md",
 	"ephemeralContainerStatuses": "Status for any ephemeral containers that have run in this pod. This field is alpha-level and is only populated by servers that enable the EphemeralContainers feature.",
+	"resize":                     "Status of a resources resize request for pod's containers. It is empty if no resources resize is pending.",
 }
 
 func (PodStatus) SwaggerDoc() map[string]string {
@@ -1906,6 +1911,16 @@ var map_ReplicationControllerStatus = map[string]string{
 
 func (ReplicationControllerStatus) SwaggerDoc() map[string]string {
 	return map_ReplicationControllerStatus
+}
+
+var map_ResizePolicy = map[string]string{
+	"":             "ResizePolicy represents the resource resize policy for a single container.",
+	"resourceName": "Name of the resource type to which this resize policy applies. Supported values: cpu, memory.",
+	"policy":       "Container resize policy applicable to the above resource.",
+}
+
+func (ResizePolicy) SwaggerDoc() map[string]string {
+	return map_ResizePolicy
 }
 
 var map_ResourceFieldSelector = map[string]string{
