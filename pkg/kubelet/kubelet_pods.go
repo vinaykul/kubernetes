@@ -37,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -1293,12 +1294,12 @@ func (pk *podKillerWithChannel) PerformPodKillingWork() {
 func (kl *Kubelet) validateContainerLogStatus(podName string, podStatus *v1.PodStatus, containerName string, previous bool) (containerID kubecontainer.ContainerID, err error) {
 	var cID string
 
-	cStatus, found := podutil.GetContainerStatus(podStatus.ContainerStatuses, containerName)
+	_, cStatus, found := podutil.GetContainerStatus(podStatus.ContainerStatuses, containerName)
 	if !found {
-		cStatus, found = podutil.GetContainerStatus(podStatus.InitContainerStatuses, containerName)
+		_, cStatus, found = podutil.GetContainerStatus(podStatus.InitContainerStatuses, containerName)
 	}
 	if !found && utilfeature.DefaultFeatureGate.Enabled(features.EphemeralContainers) {
-		cStatus, found = podutil.GetContainerStatus(podStatus.EphemeralContainerStatuses, containerName)
+		_, cStatus, found = podutil.GetContainerStatus(podStatus.EphemeralContainerStatuses, containerName)
 	}
 	if !found {
 		return kubecontainer.ContainerID{}, fmt.Errorf("container %q in pod %q is not available", containerName, podName)
@@ -1411,7 +1412,7 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 	pendingInitialization := 0
 	failedInitialization := 0
 	for _, container := range spec.InitContainers {
-		containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
+		_, containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
 		if !ok {
 			pendingInitialization++
 			continue
@@ -1443,7 +1444,7 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 	stopped := 0
 	succeeded := 0
 	for _, container := range spec.Containers {
-		containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
+		_, containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
 		if !ok {
 			unknown++
 			continue
@@ -1619,6 +1620,26 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 		len(pod.Spec.InitContainers) > 0,
 		false,
 	)
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		specStatusDiffer := false
+		for _, c := range pod.Spec.Containers {
+			if _, cs, ok := podutil.GetContainerStatus(apiPodStatus.ContainerStatuses, c.Name); ok {
+				if diff.ObjectDiff(c.Resources, cs.Resources) != "" {
+					specStatusDiffer = true
+					break
+				}
+			}
+		}
+		if !specStatusDiffer {
+			// Clear last resize state from checkpoint
+			kl.statusManager.SetPodResizeState(pod.UID, "")
+		} else {
+			checkpointState := kl.statusManager.State()
+			if resizeState, found := checkpointState.GetPodResizeState(string(pod.UID)); found {
+				apiPodStatus.Resize = resizeState
+			}
+		}
+	}
 	apiPodStatus.InitContainerStatuses = kl.convertToAPIContainerStatuses(
 		pod, podStatus,
 		oldPodStatus.InitContainerStatuses,
@@ -1649,7 +1670,6 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 			apiPodStatus.Conditions = append(apiPodStatus.Conditions, c)
 		}
 	}
-
 	return &apiPodStatus
 }
 
@@ -1886,6 +1906,9 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 					Limits:   limits,
 					Requests: requests,
 				}
+				//Always read ResourcesAllocated from checkpoint. It is the source-of-truth.
+				checkpointState := kl.statusManager.State()
+				status.ResourcesAllocated, _ = checkpointState.GetContainerResourceAllocation(string(pod.UID), cName)
 			}
 		}
 		if containerSeen[cName] == 0 {

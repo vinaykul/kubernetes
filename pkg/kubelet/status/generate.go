@@ -51,7 +51,7 @@ func GenerateContainersReadyCondition(spec *v1.PodSpec, containerStatuses []v1.C
 	unknownContainers := []string{}
 	unreadyContainers := []string{}
 	for _, container := range spec.Containers {
-		if containerStatus, ok := podutil.GetContainerStatus(containerStatuses, container.Name); ok {
+		if _, containerStatus, ok := podutil.GetContainerStatus(containerStatuses, container.Name); ok {
 			if !containerStatus.Ready {
 				unreadyContainers = append(unreadyContainers, container.Name)
 			}
@@ -151,7 +151,7 @@ func GeneratePodInitializedCondition(spec *v1.PodSpec, containerStatuses []v1.Co
 	unknownContainers := []string{}
 	unreadyContainers := []string{}
 	for _, container := range spec.InitContainers {
-		if containerStatus, ok := podutil.GetContainerStatus(containerStatuses, container.Name); ok {
+		if _, containerStatus, ok := podutil.GetContainerStatus(containerStatuses, container.Name); ok {
 			if !containerStatus.Ready {
 				unreadyContainers = append(unreadyContainers, container.Name)
 			}

@@ -18,6 +18,7 @@ package status
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -83,7 +84,13 @@ func (m *manager) testSyncBatch() {
 func newTestManager(kubeClient clientset.Interface) *manager {
 	podManager := kubepod.NewBasicPodManager(podtest.NewFakeMirrorClient(), kubesecret.NewFakeManager(), kubeconfigmap.NewFakeManager())
 	podManager.AddPod(getTestPod())
-	return NewManager(kubeClient, podManager, &statustest.FakePodDeletionSafetyProvider{}).(*manager)
+	testRootDir := ""
+	if tempDir, err := ioutil.TempDir("", "kubelet_test."); err != nil {
+		return nil
+	} else {
+		testRootDir = tempDir
+	}
+	return NewManager(kubeClient, podManager, &statustest.FakePodDeletionSafetyProvider{}, testRootDir).(*manager)
 }
 
 func generateRandomMessage() string {
