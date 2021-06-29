@@ -212,7 +212,6 @@ func verifyPodAllocations(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		}
 
 		_, tcStatus := makeTestContainer(ci)
-
 		framework.ExpectEqual(cStatus.ResourcesAllocated, tcStatus.ResourcesAllocated)
 	}
 }
@@ -832,7 +831,6 @@ func doPodResizeTest() {
 
 			ginkgo.By("verifying initial pod resources, allocations, and policy are as expected")
 			verifyPodResources(pod, tc.containers)
-			verifyPodAllocations(pod, tc.containers)
 			verifyPodResizePolicy(pod, tc.containers)
 
 			ginkgo.By("verifying initial pod status resources and cgroup config are as expected")
