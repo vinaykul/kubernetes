@@ -122,9 +122,9 @@ func getTestResourceInfo(tcInfo TestContainerInfo) (v1.ResourceRequirements, v1.
 	return res, alloc, resizePol
 }
 
-func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
+func makeTestContainer(tcInfo TestContainerInfo) (v1.Container, v1.ContainerStatus) {
 	cmd := "trap exit TERM; while true; do sleep 1; done"
-	res, _, resizePol := getTestResourceInfo(tcInfo)
+	res, alloc, resizePol := getTestResourceInfo(tcInfo)
 	tc := v1.Container{
 		Name:               tcInfo.Name,
 		Image:              imageutils.GetE2EImage(imageutils.BusyBox),
@@ -133,13 +133,18 @@ func makeTestContainer(tcInfo TestContainerInfo) v1.Container {
 		Resources:          res,
 		ResizePolicy:       resizePol,
 	}
-	return tc
+
+	tcStatus := v1.ContainerStatus{
+		Name:               tcInfo.Name,
+		ResourcesAllocated: alloc,
+	}
+	return tc, tcStatus
 }
 
 func makeTestPod(ns, name, timeStamp string, tcInfo []TestContainerInfo) *v1.Pod {
 	var testContainers []v1.Container
 	for _, ci := range tcInfo {
-		tc := makeTestContainer(ci)
+		tc, _ := makeTestContainer(ci)
 		testContainers = append(testContainers, tc)
 	}
 	pod := &v1.Pod{
@@ -171,7 +176,7 @@ func verifyPodResizePolicy(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	for _, ci := range tcInfo {
 		c, found := cMap[ci.Name]
 		gomega.Expect(found == true)
-		tc := makeTestContainer(ci)
+		tc, _ := makeTestContainer(ci)
 		framework.ExpectEqual(c.ResizePolicy, tc.ResizePolicy)
 	}
 }
@@ -184,7 +189,7 @@ func verifyPodResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	for _, ci := range tcInfo {
 		c, found := cMap[ci.Name]
 		gomega.Expect(found == true)
-		tc := makeTestContainer(ci)
+		tc, _ := makeTestContainer(ci)
 		framework.ExpectEqual(c.Resources, tc.Resources)
 	}
 }
@@ -205,7 +210,10 @@ func verifyPodAllocations(pod *v1.Pod, tcInfo []TestContainerInfo) {
 				ci.Allocations = nil
 			}()
 		}
-		framework.ExpectEqual(cStatus.ResourcesAllocated, ci.Allocations)
+
+		_, tcStatus := makeTestContainer(ci)
+
+		framework.ExpectEqual(cStatus.ResourcesAllocated, tcStatus.ResourcesAllocated)
 	}
 }
 
@@ -217,7 +225,7 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	for _, ci := range tcInfo {
 		cs, found := csMap[ci.Name]
 		gomega.Expect(found == true)
-		tc := makeTestContainer(ci)
+		tc, _ := makeTestContainer(ci)
 		framework.ExpectEqual(cs.Resources, tc.Resources)
 	}
 }
@@ -234,7 +242,7 @@ func verifyPodContainersCgroupConfig(pod *v1.Pod, tcInfo []TestContainerInfo) {
 		if ci.Resources == nil {
 			continue
 		}
-		tc := makeTestContainer(ci)
+		tc, _ := makeTestContainer(ci)
 		if tc.Resources.Limits != nil || tc.Resources.Requests != nil {
 			var cpuShares int64
 			memLimitInBytes := tc.Resources.Limits.Memory().Value()
@@ -279,7 +287,7 @@ func doPodResizeTest() {
 		expected    []TestContainerInfo
 	}
 
-	noRestart := v1.RestartPolicyNever
+	noRestart := v1.RestartNotRequired
 	tests := []testCase{
 		{
 			name: "Guaranteed QoS pod, one container - increase CPU & memory",
@@ -287,8 +295,8 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "200Mi", MemLim: "200Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -298,8 +306,8 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "400Mi", MemLim: "400Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 		},
@@ -309,8 +317,8 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "500Mi", MemLim: "500Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -320,8 +328,8 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "250Mi", MemLim: "250Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 		},
@@ -367,20 +375,20 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "100Mi", MemLim: "100Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "200Mi", MemLim: "200Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "300m", CPULim: "300m", MemReq: "300Mi", MemLim: "300Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 			patchString: `{"spec":{"containers":[
@@ -392,20 +400,20 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "140m", CPULim: "140m", MemReq: "50Mi", MemLim: "50Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c2",
 					Resources: &ContainerResources{CPUReq: "150m", CPULim: "150m", MemReq: "240Mi", MemLim: "240Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 				{
 					Name:      "c3",
 					Resources: &ContainerResources{CPUReq: "340m", CPULim: "340m", MemReq: "250Mi", MemLim: "250Mi"},
-					CPUPolicy: (*v1.ContainerResizePolicy)(&noRestart),
-					MemPolicy: (*v1.ContainerResizePolicy)(&noRestart),
+					CPUPolicy: &noRestart,
+					MemPolicy: &noRestart,
 				},
 			},
 		},
@@ -796,10 +804,10 @@ func doPodResizeTest() {
 			var pErr error
 			setDefaultPolicy := func(ci *TestContainerInfo) {
 				if ci.CPUPolicy == nil {
-					ci.CPUPolicy = (*v1.ContainerResizePolicy)(&noRestart)
+					ci.CPUPolicy = &noRestart
 				}
 				if ci.MemPolicy == nil {
-					ci.MemPolicy = (*v1.ContainerResizePolicy)(&noRestart)
+					ci.MemPolicy = &noRestart
 				}
 			}
 			for i := range tc.containers {
