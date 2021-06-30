@@ -786,7 +786,7 @@ func TestGetContainerStatus(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		resultStatus, exists := GetContainerStatus(test.status, test.name)
+		_, resultStatus, exists := GetContainerStatus(test.status, test.name)
 		assert.Equal(t, test.expected.status, resultStatus, "GetContainerStatus: "+test.desc)
 		assert.Equal(t, test.expected.exists, exists, "GetContainerStatus: "+test.desc)
 

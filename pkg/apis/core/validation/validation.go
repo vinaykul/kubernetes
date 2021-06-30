@@ -4223,6 +4223,33 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 		allErrs = append(allErrs, field.Forbidden(specPath, fmt.Sprintf("pod updates may not change fields other than %s\n%v", strings.Join(updatableSpecFields, ","), specDiff)))
 	}
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		if len(allErrs) == 0 {
+			for i, c := range newPod.Spec.Containers {
+				if c.Resources.Requests == nil {
+					continue
+				}
+				if diff.ObjectDiff(oldPod.Spec.Containers[i].Resources, c.Resources) == "" {
+					continue
+				}
+				findContainerStatus := func(css []core.ContainerStatus, cName string) (core.ContainerStatus, bool) {
+					for i := range css {
+						if css[i].Name == cName {
+							return css[i], true
+						}
+					}
+					return core.ContainerStatus{}, false
+				}
+				if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
+					if diff.ObjectDiff(c.Resources.Requests, cs.ResourcesAllocated) != "" {
+						newPod.Status.Resize = core.Proposed
+						break
+					}
+				}
+			}
+		}
+	}
+
 	return allErrs
 }
 

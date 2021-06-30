@@ -17,6 +17,7 @@ limitations under the License.
 package populator
 
 import (
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -1315,7 +1316,13 @@ func createDswpWithVolumeWithCustomPluginMgr(t *testing.T, pv *v1.PersistentVolu
 	fakeASW := cache.NewActualStateOfWorld("fake", fakeVolumePluginMgr)
 	fakeRuntime := &containertest.FakeRuntime{}
 
-	fakeStatusManager := status.NewManager(fakeClient, fakePodManager, &statustest.FakePodDeletionSafetyProvider{})
+	testRootDir := ""
+	if tempDir, err := ioutil.TempDir("", "kubelet_test."); err != nil {
+		t.Fatalf("can't make a temp rootdir: %v", err)
+	} else {
+		testRootDir = tempDir
+	}
+	fakeStatusManager := status.NewManager(fakeClient, fakePodManager, &statustest.FakePodDeletionSafetyProvider{}, testRootDir)
 
 	csiTranslator := csitrans.New()
 	dswp := &desiredStateOfWorldPopulator{

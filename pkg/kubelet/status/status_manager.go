@@ -32,13 +32,19 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	"k8s.io/kubernetes/pkg/features"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	kubepod "k8s.io/kubernetes/pkg/kubelet/pod"
+	"k8s.io/kubernetes/pkg/kubelet/status/state"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 	statusutil "k8s.io/kubernetes/pkg/util/pod"
 )
+
+// podStatusManagerStateFile is the file name where status manager stores its state
+const podStatusManagerStateFile = "pod_status_manager_state"
 
 // A wrapper around v1.PodStatus that includes a version to enforce that stale pod statuses are
 // not sent to the API server.
@@ -69,6 +75,12 @@ type manager struct {
 	// apiStatusVersions must only be accessed from the sync thread.
 	apiStatusVersions map[kubetypes.MirrorPodUID]uint64
 	podDeletionSafety PodDeletionSafetyProvider
+	// state allows to save/restore pod resource allocation and tolerate kubelet restarts.
+	state state.State
+	// lastUpdatedstate holds state for each container from the last time it was updated.
+	lastUpdateState state.State
+	// stateFileDirectory holds the directory where the state file for checkpoints is held.
+	stateFileDirectory string
 }
 
 // PodStatusProvider knows how to provide status for a pod. It's intended to be used by other components
@@ -111,19 +123,30 @@ type Manager interface {
 	// RemoveOrphanedStatuses scans the status cache and removes any entries for pods not included in
 	// the provided podUIDs.
 	RemoveOrphanedStatuses(podUIDs map[types.UID]bool)
+
+	// State returns a read-only interface to the internal status manager state.
+	State() state.Reader
+
+	// SetPodAllocation checkpoints the resources allocated to a pod's containers.
+	SetPodAllocation(pod *v1.Pod)
+
+	// SetPodResizeState checkpoints the last resizing decision for the pod.
+	SetPodResizeState(podUID types.UID, resize v1.ResourcesResizeStatus)
 }
 
 const syncPeriod = 10 * time.Second
 
 // NewManager returns a functional Manager.
-func NewManager(kubeClient clientset.Interface, podManager kubepod.Manager, podDeletionSafety PodDeletionSafetyProvider) Manager {
+func NewManager(kubeClient clientset.Interface, podManager kubepod.Manager, podDeletionSafety PodDeletionSafetyProvider, stateFileDirectory string) Manager {
 	return &manager{
-		kubeClient:        kubeClient,
-		podManager:        podManager,
-		podStatuses:       make(map[types.UID]versionedPodStatus),
-		podStatusChannel:  make(chan podStatusSyncRequest, 1000), // Buffer up to 1000 statuses
-		apiStatusVersions: make(map[kubetypes.MirrorPodUID]uint64),
-		podDeletionSafety: podDeletionSafety,
+		kubeClient:         kubeClient,
+		podManager:         podManager,
+		podStatuses:        make(map[types.UID]versionedPodStatus),
+		podStatusChannel:   make(chan podStatusSyncRequest, 1000), // Buffer up to 1000 statuses
+		apiStatusVersions:  make(map[kubetypes.MirrorPodUID]uint64),
+		podDeletionSafety:  podDeletionSafety,
+		lastUpdateState:    state.NewStateMemory(),
+		stateFileDirectory: stateFileDirectory,
 	}
 }
 
@@ -154,6 +177,15 @@ func (m *manager) Start() {
 		return
 	}
 
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		stateImpl, err := state.NewStateCheckpoint(m.stateFileDirectory, podStatusManagerStateFile)
+		if err != nil {
+			klog.ErrorS(err, "Could not initialize pod allocation checkpoint manager, please drain node and remove policy state file")
+			return
+		}
+		m.state = stateImpl
+	}
+
 	klog.InfoS("Starting to sync pod status with apiserver")
 	//lint:ignore SA1015 Ticker can link since this is only called once and doesn't handle termination.
 	syncTicker := time.Tick(syncPeriod)
@@ -177,6 +209,32 @@ func (m *manager) Start() {
 			}
 		}
 	}, 0)
+}
+
+// State returns the pod resources checkpoint state of the pod status manager
+func (m *manager) State() state.Reader {
+	return m.state
+}
+
+// SetPodAllocation checkpoints the resources allocated to a pod's containers
+func (m *manager) SetPodAllocation(pod *v1.Pod) {
+	m.podStatusesLock.RLock()
+	defer m.podStatusesLock.RUnlock()
+	for _, container := range pod.Spec.Containers {
+		var alloc v1.ResourceList
+		if container.Resources.Requests != nil {
+			alloc = container.Resources.Requests.DeepCopy()
+		}
+		m.state.SetContainerResourceAllocation(string(pod.UID), container.Name, alloc)
+	}
+	m.updateStatusInternal(pod, pod.Status, false)
+}
+
+// SetPodResizeState checkpoints the last resizing decision for the pod.
+func (m *manager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) {
+	m.podStatusesLock.RLock()
+	defer m.podStatusesLock.RUnlock()
+	m.state.SetPodResizeState(string(podUID), resizeState)
 }
 
 func (m *manager) GetPodStatus(uid types.UID) (v1.PodStatus, bool) {
@@ -484,6 +542,9 @@ func (m *manager) deletePodStatus(uid types.UID) {
 	m.podStatusesLock.Lock()
 	defer m.podStatusesLock.Unlock()
 	delete(m.podStatuses, uid)
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		m.state.Delete(string(uid), "")
+	}
 }
 
 // TODO(filipg): It'd be cleaner if we can do this without signal from user.
@@ -494,6 +555,9 @@ func (m *manager) RemoveOrphanedStatuses(podUIDs map[types.UID]bool) {
 		if _, ok := podUIDs[key]; !ok {
 			klog.V(5).InfoS("Removing pod from status map.", "podUID", key)
 			delete(m.podStatuses, key)
+			if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+				m.state.Delete(string(key), "")
+			}
 		}
 	}
 }

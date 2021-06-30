@@ -56,7 +56,7 @@ func (m *kubeGenericRuntimeManager) generateLinuxContainerResources(pod *v1.Pod,
 	var cpuShares int64
 	cpuRequest := container.Resources.Requests.Cpu()
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.InPlacePodVerticalScaling) {
-		containerStatus, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name)
+		_, containerStatus, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name)
 		if found {
 			cpuRequest = containerStatus.ResourcesAllocated.Cpu()
 		}

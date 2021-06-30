@@ -52,6 +52,7 @@ import (
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 	"k8s.io/kubernetes/pkg/kubelet/cri/streaming/portforward"
 	"k8s.io/kubernetes/pkg/kubelet/cri/streaming/remotecommand"
+	"k8s.io/kubernetes/pkg/kubelet/status"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/volume/util/hostutil"
 	"k8s.io/kubernetes/pkg/volume/util/subpath"
@@ -3057,6 +3058,8 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 	testKubelet := newTestKubelet(t, false)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
+	kubelet.statusManager = status.NewFakeManager()
+
 	for tdesc, tc := range map[string]struct {
 		Pod       *v1.Pod
 		Resources []v1.ResourceRequirements
