@@ -1531,6 +1531,16 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
+	if err := s.AddGeneratedConversionFunc((*v1.ResizePolicy)(nil), (*core.ResizePolicy)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1_ResizePolicy_To_core_ResizePolicy(a.(*v1.ResizePolicy), b.(*core.ResizePolicy), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddGeneratedConversionFunc((*core.ResizePolicy)(nil), (*v1.ResizePolicy)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_core_ResizePolicy_To_v1_ResizePolicy(a.(*core.ResizePolicy), b.(*v1.ResizePolicy), scope)
+	}); err != nil {
+		return err
+	}
 	if err := s.AddGeneratedConversionFunc((*v1.ResourceFieldSelector)(nil), (*core.ResourceFieldSelector)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1_ResourceFieldSelector_To_core_ResourceFieldSelector(a.(*v1.ResourceFieldSelector), b.(*core.ResourceFieldSelector), scope)
 	}); err != nil {
@@ -2870,6 +2880,7 @@ func autoConvert_v1_Container_To_core_Container(in *v1.Container, out *core.Cont
 	if err := Convert_v1_ResourceRequirements_To_core_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
 		return err
 	}
+	out.ResizePolicy = *(*[]core.ResizePolicy)(unsafe.Pointer(&in.ResizePolicy))
 	out.VolumeMounts = *(*[]core.VolumeMount)(unsafe.Pointer(&in.VolumeMounts))
 	out.VolumeDevices = *(*[]core.VolumeDevice)(unsafe.Pointer(&in.VolumeDevices))
 	out.LivenessProbe = (*core.Probe)(unsafe.Pointer(in.LivenessProbe))
@@ -2903,6 +2914,7 @@ func autoConvert_core_Container_To_v1_Container(in *core.Container, out *v1.Cont
 	if err := Convert_core_ResourceRequirements_To_v1_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
 		return err
 	}
+	out.ResizePolicy = *(*[]v1.ResizePolicy)(unsafe.Pointer(&in.ResizePolicy))
 	out.VolumeMounts = *(*[]v1.VolumeMount)(unsafe.Pointer(&in.VolumeMounts))
 	out.VolumeDevices = *(*[]v1.VolumeDevice)(unsafe.Pointer(&in.VolumeDevices))
 	out.LivenessProbe = (*v1.Probe)(unsafe.Pointer(in.LivenessProbe))
@@ -3086,6 +3098,10 @@ func autoConvert_v1_ContainerStatus_To_core_ContainerStatus(in *v1.ContainerStat
 	out.ImageID = in.ImageID
 	out.ContainerID = in.ContainerID
 	out.Started = (*bool)(unsafe.Pointer(in.Started))
+	out.ResourcesAllocated = *(*core.ResourceList)(unsafe.Pointer(&in.ResourcesAllocated))
+	if err := Convert_v1_ResourceRequirements_To_core_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3108,6 +3124,10 @@ func autoConvert_core_ContainerStatus_To_v1_ContainerStatus(in *core.ContainerSt
 	out.ImageID = in.ImageID
 	out.ContainerID = in.ContainerID
 	out.Started = (*bool)(unsafe.Pointer(in.Started))
+	out.ResourcesAllocated = *(*v1.ResourceList)(unsafe.Pointer(&in.ResourcesAllocated))
+	if err := Convert_core_ResourceRequirements_To_v1_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3458,6 +3478,7 @@ func autoConvert_v1_EphemeralContainerCommon_To_core_EphemeralContainerCommon(in
 	if err := Convert_v1_ResourceRequirements_To_core_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
 		return err
 	}
+	out.ResizePolicy = *(*[]core.ResizePolicy)(unsafe.Pointer(&in.ResizePolicy))
 	out.VolumeMounts = *(*[]core.VolumeMount)(unsafe.Pointer(&in.VolumeMounts))
 	out.VolumeDevices = *(*[]core.VolumeDevice)(unsafe.Pointer(&in.VolumeDevices))
 	out.LivenessProbe = (*core.Probe)(unsafe.Pointer(in.LivenessProbe))
@@ -3491,6 +3512,7 @@ func autoConvert_core_EphemeralContainerCommon_To_v1_EphemeralContainerCommon(in
 	if err := Convert_core_ResourceRequirements_To_v1_ResourceRequirements(&in.Resources, &out.Resources, s); err != nil {
 		return err
 	}
+	out.ResizePolicy = *(*[]v1.ResizePolicy)(unsafe.Pointer(&in.ResizePolicy))
 	out.VolumeMounts = *(*[]v1.VolumeMount)(unsafe.Pointer(&in.VolumeMounts))
 	out.VolumeDevices = *(*[]v1.VolumeDevice)(unsafe.Pointer(&in.VolumeDevices))
 	out.LivenessProbe = (*v1.Probe)(unsafe.Pointer(in.LivenessProbe))
@@ -6173,6 +6195,7 @@ func autoConvert_v1_PodStatus_To_core_PodStatus(in *v1.PodStatus, out *core.PodS
 	out.ContainerStatuses = *(*[]core.ContainerStatus)(unsafe.Pointer(&in.ContainerStatuses))
 	out.QOSClass = core.PodQOSClass(in.QOSClass)
 	out.EphemeralContainerStatuses = *(*[]core.ContainerStatus)(unsafe.Pointer(&in.EphemeralContainerStatuses))
+	out.Resize = core.ResourcesResizeStatus(in.Resize)
 	return nil
 }
 
@@ -6189,6 +6212,7 @@ func autoConvert_core_PodStatus_To_v1_PodStatus(in *core.PodStatus, out *v1.PodS
 	out.InitContainerStatuses = *(*[]v1.ContainerStatus)(unsafe.Pointer(&in.InitContainerStatuses))
 	out.ContainerStatuses = *(*[]v1.ContainerStatus)(unsafe.Pointer(&in.ContainerStatuses))
 	out.EphemeralContainerStatuses = *(*[]v1.ContainerStatus)(unsafe.Pointer(&in.EphemeralContainerStatuses))
+	out.Resize = v1.ResourcesResizeStatus(in.Resize)
 	return nil
 }
 
@@ -6792,6 +6816,28 @@ func autoConvert_core_ReplicationControllerStatus_To_v1_ReplicationControllerSta
 // Convert_core_ReplicationControllerStatus_To_v1_ReplicationControllerStatus is an autogenerated conversion function.
 func Convert_core_ReplicationControllerStatus_To_v1_ReplicationControllerStatus(in *core.ReplicationControllerStatus, out *v1.ReplicationControllerStatus, s conversion.Scope) error {
 	return autoConvert_core_ReplicationControllerStatus_To_v1_ReplicationControllerStatus(in, out, s)
+}
+
+func autoConvert_v1_ResizePolicy_To_core_ResizePolicy(in *v1.ResizePolicy, out *core.ResizePolicy, s conversion.Scope) error {
+	out.ResourceName = core.ResourceName(in.ResourceName)
+	out.Policy = core.ContainerResizePolicy(in.Policy)
+	return nil
+}
+
+// Convert_v1_ResizePolicy_To_core_ResizePolicy is an autogenerated conversion function.
+func Convert_v1_ResizePolicy_To_core_ResizePolicy(in *v1.ResizePolicy, out *core.ResizePolicy, s conversion.Scope) error {
+	return autoConvert_v1_ResizePolicy_To_core_ResizePolicy(in, out, s)
+}
+
+func autoConvert_core_ResizePolicy_To_v1_ResizePolicy(in *core.ResizePolicy, out *v1.ResizePolicy, s conversion.Scope) error {
+	out.ResourceName = v1.ResourceName(in.ResourceName)
+	out.Policy = v1.ContainerResizePolicy(in.Policy)
+	return nil
+}
+
+// Convert_core_ResizePolicy_To_v1_ResizePolicy is an autogenerated conversion function.
+func Convert_core_ResizePolicy_To_v1_ResizePolicy(in *core.ResizePolicy, out *v1.ResizePolicy, s conversion.Scope) error {
+	return autoConvert_core_ResizePolicy_To_v1_ResizePolicy(in, out, s)
 }
 
 func autoConvert_v1_ResourceFieldSelector_To_core_ResourceFieldSelector(in *v1.ResourceFieldSelector, out *core.ResourceFieldSelector, s conversion.Scope) error {
