@@ -195,7 +195,7 @@ func (w *worker) doProbe() (keepGoing bool) {
 		return false
 	}
 
-	c, ok := podutil.GetContainerStatus(status.ContainerStatuses, w.container.Name)
+	_, c, ok := podutil.GetContainerStatus(status.ContainerStatuses, w.container.Name)
 	if !ok || len(c.ContainerID) == 0 {
 		// Either the container has not been created yet, or it was deleted.
 		klog.V(3).InfoS("Probe target container not found",
