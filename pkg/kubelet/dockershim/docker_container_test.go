@@ -199,6 +199,11 @@ func TestContainerStatus(t *testing.T) {
 		Mounts:      []*runtimeapi.Mount{},
 		Labels:      config.Labels,
 		Annotations: config.Annotations,
+		Resources: &runtimeapi.ContainerResources{
+			R: &runtimeapi.ContainerResources_Linux{
+				Linux: &runtimeapi.LinuxContainerResources{},
+			},
+		},
 	}
 
 	fDocker.InjectImages([]dockertypes.ImageSummary{{ID: imageName}})
