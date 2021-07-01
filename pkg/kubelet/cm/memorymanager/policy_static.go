@@ -25,9 +25,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	corehelper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/cm/memorymanager/state"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
@@ -100,7 +103,7 @@ func (p *staticPolicy) Allocate(s state.State, pod *v1.Pod, container *v1.Contai
 	hint := p.affinity.GetAffinity(string(pod.UID), container.Name)
 	klog.InfoS("Got topology affinity", "pod", klog.KObj(pod), "podUID", pod.UID, "containerName", container.Name, "hint", hint)
 
-	requestedResources, err := getRequestedResources(container)
+	requestedResources, err := getRequestedResources(pod, container)
 	if err != nil {
 		return err
 	}
@@ -280,7 +283,7 @@ func getPodRequestedResources(pod *v1.Pod) (map[v1.ResourceName]uint64, error) {
 	reqRsrcsByAppCtrs := make(map[v1.ResourceName]uint64)
 
 	for _, ctr := range pod.Spec.InitContainers {
-		reqRsrcs, err := getRequestedResources(&ctr)
+		reqRsrcs, err := getRequestedResources(pod, &ctr)
 
 		if err != nil {
 			return nil, err
@@ -297,7 +300,7 @@ func getPodRequestedResources(pod *v1.Pod) (map[v1.ResourceName]uint64, error) {
 	}
 
 	for _, ctr := range pod.Spec.Containers {
-		reqRsrcs, err := getRequestedResources(&ctr)
+		reqRsrcs, err := getRequestedResources(pod, &ctr)
 
 		if err != nil {
 			return nil, err
@@ -350,7 +353,7 @@ func (p *staticPolicy) GetTopologyHints(s state.State, pod *v1.Pod, container *v
 		return nil
 	}
 
-	requestedResources, err := getRequestedResources(container)
+	requestedResources, err := getRequestedResources(pod, container)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get container requested resources", "pod", klog.KObj(pod), "podUID", pod.UID, "containerName", container.Name)
 		return nil
@@ -367,9 +370,15 @@ func (p *staticPolicy) GetTopologyHints(s state.State, pod *v1.Pod, container *v
 	return p.calculateHints(s, requestedResources)
 }
 
-func getRequestedResources(container *v1.Container) (map[v1.ResourceName]uint64, error) {
+func getRequestedResources(pod *v1.Pod, container *v1.Container) (map[v1.ResourceName]uint64, error) {
 	requestedResources := map[v1.ResourceName]uint64{}
-	for resourceName, quantity := range container.Resources.Requests {
+	resources := container.Resources.Requests
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		if _, cs, ok := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name); ok {
+			resources = cs.ResourcesAllocated
+		}
+	}
+	for resourceName, quantity := range resources {
 		if resourceName != v1.ResourceMemory && !corehelper.IsHugePageResourceName(resourceName) {
 			continue
 		}

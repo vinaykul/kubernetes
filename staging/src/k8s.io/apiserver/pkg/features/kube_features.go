@@ -170,6 +170,14 @@ const (
 	//
 	// Add support for distributed tracing in the API Server
 	APIServerTracing featuregate.Feature = "APIServerTracing"
+
+	// owner: @vinaykul
+	// kep: http://kep.k8s.io/1287
+	// kep: http://kep.k8s.io/2273
+	// alpha: v1.22
+	//
+	// Enables In-Place Pod Vertical Scaling
+	InPlacePodVerticalScaling featuregate.Feature = "InPlacePodVerticalScaling"
 )
 
 func init() {
@@ -180,22 +188,23 @@ func init() {
 // To add a new feature, define a key for it above and add it here. The features will be
 // available throughout Kubernetes binaries.
 var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	StreamingProxyRedirects:  {Default: false, PreRelease: featuregate.Deprecated},
-	ValidateProxyRedirects:   {Default: true, PreRelease: featuregate.Deprecated},
-	AdvancedAuditing:         {Default: true, PreRelease: featuregate.GA},
-	APIResponseCompression:   {Default: true, PreRelease: featuregate.Beta},
-	APIListChunking:          {Default: true, PreRelease: featuregate.Beta},
-	DryRun:                   {Default: true, PreRelease: featuregate.GA},
-	RemainingItemCount:       {Default: true, PreRelease: featuregate.Beta},
-	ServerSideApply:          {Default: true, PreRelease: featuregate.GA},
-	StorageVersionHash:       {Default: true, PreRelease: featuregate.Beta},
-	StorageVersionAPI:        {Default: false, PreRelease: featuregate.Alpha},
-	WatchBookmark:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-	APIPriorityAndFairness:   {Default: true, PreRelease: featuregate.Beta},
-	RemoveSelfLink:           {Default: true, PreRelease: featuregate.Beta},
-	SelectorIndex:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-	WarningHeaders:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
-	EfficientWatchResumption: {Default: true, PreRelease: featuregate.Beta},
-	APIServerIdentity:        {Default: false, PreRelease: featuregate.Alpha},
-	APIServerTracing:         {Default: false, PreRelease: featuregate.Alpha},
+	StreamingProxyRedirects:   {Default: false, PreRelease: featuregate.Deprecated},
+	ValidateProxyRedirects:    {Default: true, PreRelease: featuregate.Deprecated},
+	AdvancedAuditing:          {Default: true, PreRelease: featuregate.GA},
+	APIResponseCompression:    {Default: true, PreRelease: featuregate.Beta},
+	APIListChunking:           {Default: true, PreRelease: featuregate.Beta},
+	DryRun:                    {Default: true, PreRelease: featuregate.GA},
+	RemainingItemCount:        {Default: true, PreRelease: featuregate.Beta},
+	ServerSideApply:           {Default: true, PreRelease: featuregate.GA},
+	StorageVersionHash:        {Default: true, PreRelease: featuregate.Beta},
+	StorageVersionAPI:         {Default: false, PreRelease: featuregate.Alpha},
+	WatchBookmark:             {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+	APIPriorityAndFairness:    {Default: true, PreRelease: featuregate.Beta},
+	RemoveSelfLink:            {Default: true, PreRelease: featuregate.Beta},
+	SelectorIndex:             {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+	WarningHeaders:            {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
+	EfficientWatchResumption:  {Default: true, PreRelease: featuregate.Beta},
+	APIServerIdentity:         {Default: false, PreRelease: featuregate.Alpha},
+	APIServerTracing:          {Default: false, PreRelease: featuregate.Alpha},
+	InPlacePodVerticalScaling: {Default: false, PreRelease: featuregate.Alpha},
 }
