@@ -334,6 +334,8 @@ type Status struct {
 	// TerminationMessagePath).
 	Message string
 	// CPU and memory resources for this container
+	// TODO: Store *runtimeapi.ContainerResources or its internal version (to be defined)
+	//       See review commment: https://github.com/kubernetes/kubernetes/pull/102884#discussion_r662534632
 	Resources v1.ResourceRequirements
 }
 

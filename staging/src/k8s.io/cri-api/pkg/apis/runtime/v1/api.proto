@@ -1009,12 +1009,10 @@ message ContainerStatusResponse {
 
 // ContainerResources holds resource limits configuration for a container.
 message ContainerResources {
-    oneof r {
-        // Resource limits configuration specific to Linux container.
-        LinuxContainerResources linux = 1;
-        // Resource limits configuration specific to Windows container.
-        WindowsContainerResources windows = 2;
-    }
+    // Resource limits configuration specific to Linux container.
+    LinuxContainerResources linux = 1;
+    // Resource limits configuration specific to Windows container.
+    WindowsContainerResources windows = 2;
 }
 
 message UpdateContainerResourcesRequest {

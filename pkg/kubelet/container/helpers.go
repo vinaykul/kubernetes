@@ -104,17 +104,15 @@ func HashContainer(container *v1.Container) uint64 {
 	hash := fnv.New32a()
 	// Omit nil or empty field when calculating hash value
 	// Please see https://github.com/kubernetes/kubernetes/issues/53644
+	containerJSON, _ := json.Marshal(container)
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		// In-Place Pod Vertical Scaling allows mutable Resources field.
 		// Changes to this field may not require container restart depending
 		// on policy. So it is excluded from hash.
-		cResources := container.Resources
-		container.Resources = v1.ResourceRequirements{}
-		defer func() {
-			container.Resources = cResources
-		}()
+		containerCopy := container.DeepCopy()
+		containerCopy.Resources = v1.ResourceRequirements{}
+		containerJSON, _ = json.Marshal(containerCopy)
 	}
-	containerJSON, _ := json.Marshal(container)
 	hashutil.DeepHashObject(hash, containerJSON)
 	return uint64(hash.Sum32())
 }

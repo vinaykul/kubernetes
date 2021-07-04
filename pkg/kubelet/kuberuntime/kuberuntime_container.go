@@ -360,11 +360,11 @@ func (m *kubeGenericRuntimeManager) generateContainerConfig(container *v1.Contai
 func (m *kubeGenericRuntimeManager) updateContainerResources(pod *v1.Pod, container *v1.Container, containerID kubecontainer.ContainerID) error {
 	containerResources := m.generateContainerResources(pod, container)
 	if containerResources == nil {
-		return fmt.Errorf("Container %q UpdateContainerResources failed: cannot generate resources config", containerID.String())
+		return fmt.Errorf("container %q updateContainerResources failed: cannot generate resources config", containerID.String())
 	}
 	err := m.runtimeService.UpdateContainerResources(containerID.ID, containerResources)
 	if err != nil {
-		klog.ErrorS(err, "UpdateContainerResources failed", "Container", containerID.String())
+		klog.ErrorS(err, "UpdateContainerResources failed", "container", containerID.String())
 	}
 	return err
 }
@@ -563,6 +563,8 @@ func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName strin
 	labeledInfo := getContainerInfoFromLabels(status.Labels)
 	var resourceLimits, resourceRequests v1.ResourceList
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		//TODO(vinaykul): Instead of conversion here, store runtimeapi.ContainerStatus.Resources
+		//    in kubecontainer.Status and convert in kubelet_pods:convertToAPIContainerStatus
 		// If runtime reports cpu & memory resources info, add it to container status
 		statusResources := status.Resources.GetLinux()
 		if statusResources != nil {

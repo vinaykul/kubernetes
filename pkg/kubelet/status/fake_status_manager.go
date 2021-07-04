@@ -68,14 +68,21 @@ func (m *fakeManager) State() state.Reader {
 	return m.state
 }
 
-func (m *fakeManager) SetPodAllocation(pod *v1.Pod) {
+func (m *fakeManager) SetPodAllocation(pod *v1.Pod) error {
 	klog.InfoS("SetPodAllocation()")
-	return
+	for _, container := range pod.Spec.Containers {
+		var alloc v1.ResourceList
+		if container.Resources.Requests != nil {
+			alloc = container.Resources.Requests.DeepCopy()
+		}
+		m.state.SetContainerResourceAllocation(string(pod.UID), container.Name, alloc)
+	}
+	return nil
 }
 
-func (m *fakeManager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) {
+func (m *fakeManager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) error {
 	klog.InfoS("SetPodResizeState()")
-	return
+	return nil
 }
 
 // NewFakeManager creates empty/fake memory manager

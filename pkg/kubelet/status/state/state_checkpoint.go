@@ -52,7 +52,6 @@ func NewStateCheckpoint(stateDir, checkpointName string) (State, error) {
 		//lint:ignore ST1005 user-facing error message
 		return nil, fmt.Errorf("could not restore state from checkpoint: %v, please drain this node and delete pod allocation checkpoint file %q before restarting Kubelet", err, path.Join(stateDir, checkpointName))
 	}
-
 	return stateCheckpoint, nil
 }
 
@@ -74,7 +73,6 @@ func (sc *stateCheckpoint) restoreState() error {
 	sc.cache.SetPodResourceAllocation(checkpoint.AllocationEntries)
 	sc.cache.SetResizeState(checkpoint.ResizeStateEntries)
 	klog.V(2).InfoS("State checkpoint: restored pod resource allocation state from checkpoint")
-
 	return nil
 }
 
@@ -108,8 +106,7 @@ func (sc *stateCheckpoint) storeState() error {
 func (sc *stateCheckpoint) GetContainerResourceAllocation(podUID string, containerName string) (v1.ResourceList, bool) {
 	sc.mux.RLock()
 	defer sc.mux.RUnlock()
-	res, ok := sc.cache.GetContainerResourceAllocation(podUID, containerName)
-	return res, ok
+	return sc.cache.GetContainerResourceAllocation(podUID, containerName)
 }
 
 // GetPodResourceAllocation returns current pod resource allocation
@@ -134,49 +131,49 @@ func (sc *stateCheckpoint) GetResizeState() PodResizeState {
 }
 
 // SetContainerResourceAllocation sets resources allocated to a pod's container
-func (sc *stateCheckpoint) SetContainerResourceAllocation(podUID string, containerName string, alloc v1.ResourceList) {
+func (sc *stateCheckpoint) SetContainerResourceAllocation(podUID string, containerName string, alloc v1.ResourceList) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.SetContainerResourceAllocation(podUID, containerName, alloc)
-	sc.storeState()
+	return sc.storeState()
 }
 
 // SetPodResourceAllocation sets pod resource allocation
-func (sc *stateCheckpoint) SetPodResourceAllocation(a PodResourceAllocation) {
+func (sc *stateCheckpoint) SetPodResourceAllocation(a PodResourceAllocation) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.SetPodResourceAllocation(a)
-	sc.storeState()
+	return sc.storeState()
 }
 
 // SetPodResizeState sets the last resize decision for a pod
-func (sc *stateCheckpoint) SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) {
+func (sc *stateCheckpoint) SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.SetPodResizeState(podUID, resizeState)
-	sc.storeState()
+	return sc.storeState()
 }
 
 // SetResizeState sets the resize decisions
-func (sc *stateCheckpoint) SetResizeState(rs PodResizeState) {
+func (sc *stateCheckpoint) SetResizeState(rs PodResizeState) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.SetResizeState(rs)
-	sc.storeState()
+	return sc.storeState()
 }
 
 // Delete deletes allocations for specified pod
-func (sc *stateCheckpoint) Delete(podUID string, containerName string) {
+func (sc *stateCheckpoint) Delete(podUID string, containerName string) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.Delete(podUID, containerName)
-	sc.storeState()
+	return sc.storeState()
 }
 
 // ClearState clears the state and saves it in a checkpoint
-func (sc *stateCheckpoint) ClearState() {
+func (sc *stateCheckpoint) ClearState() error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
 	sc.cache.ClearState()
-	sc.storeState()
+	return sc.storeState()
 }

@@ -28,14 +28,14 @@ type PodResizeState map[string]v1.ResourcesResizeStatus
 
 // Clone returns a copy of PodResourceAllocation
 func (pr PodResourceAllocation) Clone() PodResourceAllocation {
-	ret := make(PodResourceAllocation)
+	prCopy := make(PodResourceAllocation)
 	for pod := range pr {
-		ret[pod] = make(map[string]v1.ResourceList)
+		prCopy[pod] = make(map[string]v1.ResourceList)
 		for container, alloc := range pr[pod] {
-			ret[pod][container] = alloc
+			prCopy[pod][container] = alloc.DeepCopy()
 		}
 	}
-	return ret
+	return prCopy
 }
 
 // Reader interface used to read current pod resource allocation state
@@ -47,12 +47,12 @@ type Reader interface {
 }
 
 type writer interface {
-	SetContainerResourceAllocation(podUID string, containerName string, alloc v1.ResourceList)
-	SetPodResourceAllocation(PodResourceAllocation)
-	SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus)
-	SetResizeState(PodResizeState)
-	Delete(podUID string, containerName string)
-	ClearState()
+	SetContainerResourceAllocation(podUID string, containerName string, alloc v1.ResourceList) error
+	SetPodResourceAllocation(PodResourceAllocation) error
+	SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) error
+	SetResizeState(PodResizeState) error
+	Delete(podUID string, containerName string) error
+	ClearState() error
 }
 
 // State interface provides methods for tracking and setting pod resource allocation

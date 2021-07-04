@@ -1738,6 +1738,8 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 	pullSecrets := kl.getPullSecretsForPod(pod)
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		// Handle pod resize here instead of doing it in HandlePodUpdates because
+		// this conveniently retries any Deferred resize requests
 		if !kl.podIsTerminated(pod) && !kubepod.IsStaticPod(pod) {
 			kl.handlePodResourcesResize(pod)
 		}
@@ -2186,7 +2188,10 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 				}
 
 				// For new pod, checkpoint the resource values at which the Pod has been admitted
-				kl.statusManager.SetPodAllocation(podCopy)
+				if err := kl.statusManager.SetPodAllocation(podCopy); err != nil {
+					//TODO(vinaykul): Can we recover from this in some way? Investigate
+					klog.ErrorS(err, "SetPodAllocation failed", "pod", format.Pod(pod))
+				}
 			} else {
 				// Check if we can admit the pod; if not, reject it.
 				if ok, reason, message := kl.canAdmitPod(activePods, pod); !ok {
@@ -2343,16 +2348,22 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
 	fit, updatedPod, resizeState := kl.canResizePod(pod)
 	if fit {
 		// Update pod resource allocation checkpoint
-		kl.statusManager.SetPodAllocation(updatedPod)
+		if err := kl.statusManager.SetPodAllocation(updatedPod); err != nil {
+			//TODO(vinaykul): Can we recover from this in some way? Investigate
+			klog.ErrorS(err, "SetPodAllocation failed", "pod", format.Pod(pod))
+		}
 		*pod = *updatedPod
 	}
 	if resizeState != "" {
-		// Save resize decision
-		kl.statusManager.SetPodResizeState(pod.UID, resizeState)
+		// Save resize decision to checkpoint
+		if err := kl.statusManager.SetPodResizeState(pod.UID, resizeState); err != nil {
+			//TODO(vinaykul): Can we recover from this in some way? Investigate
+			klog.ErrorS(err, "SetPodResizeState failed", "pod", format.Pod(pod))
+		}
 		pod.Status.Resize = resizeState
-		kl.podManager.UpdatePod(pod)
-		kl.statusManager.SetPodStatus(pod, pod.Status)
 	}
+	kl.podManager.UpdatePod(pod)
+	kl.statusManager.SetPodStatus(pod, pod.Status)
 	return
 }
 

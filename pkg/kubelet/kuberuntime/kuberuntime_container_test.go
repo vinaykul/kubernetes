@@ -231,13 +231,11 @@ func TestToKubeContainerStatus(t *testing.T) {
 				CreatedAt: createdAt,
 				StartedAt: startedAt,
 				Resources: &runtimeapi.ContainerResources{
-					R: &runtimeapi.ContainerResources_Linux{
-						Linux: &runtimeapi.LinuxContainerResources{
-							CpuQuota:           25000,
-							CpuPeriod:          100000,
-							MemoryLimitInBytes: 524288000,
-							OomScoreAdj:        -998,
-						},
+					Linux: &runtimeapi.LinuxContainerResources{
+						CpuQuota:           25000,
+						CpuPeriod:          100000,
+						MemoryLimitInBytes: 524288000,
+						OomScoreAdj:        -998,
 					},
 				},
 			},
@@ -264,11 +262,9 @@ func TestToKubeContainerStatus(t *testing.T) {
 				CreatedAt: createdAt,
 				StartedAt: startedAt,
 				Resources: &runtimeapi.ContainerResources{
-					R: &runtimeapi.ContainerResources_Linux{
-						Linux: &runtimeapi.LinuxContainerResources{
-							CpuQuota:  50000,
-							CpuPeriod: 100000,
-						},
+					Linux: &runtimeapi.LinuxContainerResources{
+						CpuQuota:  50000,
+						CpuPeriod: 100000,
 					},
 				},
 			},
@@ -290,11 +286,9 @@ func TestToKubeContainerStatus(t *testing.T) {
 				CreatedAt: createdAt,
 				StartedAt: startedAt,
 				Resources: &runtimeapi.ContainerResources{
-					R: &runtimeapi.ContainerResources_Linux{
-						Linux: &runtimeapi.LinuxContainerResources{
-							MemoryLimitInBytes: 524288000,
-							OomScoreAdj:        -998,
-						},
+					Linux: &runtimeapi.LinuxContainerResources{
+						MemoryLimitInBytes: 524288000,
+						OomScoreAdj:        -998,
 					},
 				},
 			},

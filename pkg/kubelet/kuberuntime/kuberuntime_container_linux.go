@@ -43,9 +43,7 @@ func (m *kubeGenericRuntimeManager) applyPlatformSpecificContainerConfig(config 
 // generateContainerResources generates platform specific (linux) container resources config for runtime
 func (m *kubeGenericRuntimeManager) generateContainerResources(pod *v1.Pod, container *v1.Container) *runtimeapi.ContainerResources {
 	return &runtimeapi.ContainerResources{
-		R: &runtimeapi.ContainerResources_Linux{
-			Linux: m.generateLinuxContainerResources(pod, container),
-		},
+		Linux: m.generateLinuxContainerResources(pod, container),
 	}
 }
 
@@ -58,7 +56,7 @@ func (m *kubeGenericRuntimeManager) generateLinuxContainerResources(pod *v1.Pod,
 	cpuRequest := container.Resources.Requests.Cpu()
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.InPlacePodVerticalScaling) {
 		_, containerStatus, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name)
-		if found {
+		if found && containerStatus.ResourcesAllocated != nil {
 			cpuRequest = containerStatus.ResourcesAllocated.Cpu()
 		}
 	}

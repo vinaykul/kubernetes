@@ -3293,12 +3293,13 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 			},
 			Expected: []v1.ContainerStatus{
 				{
-					Name:        testContainerName,
-					ContainerID: testContainerID.String(),
-					Image:       "img",
-					ImageID:     "img1234",
-					State:       v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
-					Resources:   v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1G,
+					Resources:          v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
 				},
 			},
 		},
@@ -3317,18 +3318,20 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 			},
 			Expected: []v1.ContainerStatus{
 				{
-					Name:        testContainerName,
-					ContainerID: testContainerID.String(),
-					Image:       "img",
-					ImageID:     "img1234",
-					State:       v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
-					Resources:   v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1G,
+					Resources:          v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
 				},
 			},
 		},
 	} {
 		for i := range tc.Pod.Spec.Containers {
 			tc.Pod.Spec.Containers[i].Resources = tc.Resources[i]
+			kubelet.statusManager.SetPodAllocation(tc.Pod)
 			tc.Pod.Status.ContainerStatuses[i].ResourcesAllocated = tc.Resources[i].Requests
 			if tc.Resources[i].Limits != nil {
 				tc.PodStatus.ContainerStatuses[i].Resources.Limits = tc.Resources[i].Limits

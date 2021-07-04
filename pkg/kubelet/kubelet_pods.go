@@ -1657,7 +1657,10 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 		}
 		if !specStatusDiffer {
 			// Clear last resize state from checkpoint
-			kl.statusManager.SetPodResizeState(pod.UID, "")
+			if err := kl.statusManager.SetPodResizeState(pod.UID, ""); err != nil {
+				//TODO(vinaykul): Can we recover from this in some way? Investigate
+				klog.ErrorS(err, "SetPodResizeState failed", "pod", pod.Name)
+			}
 		} else {
 			checkpointState := kl.statusManager.State()
 			if resizeState, found := checkpointState.GetPodResizeState(string(pod.UID)); found {
@@ -1772,10 +1775,6 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 		defaultWaitingState = v1.ContainerState{Waiting: &v1.ContainerStateWaiting{Reason: PodInitializing}}
 	}
 
-	var containerResources map[string]struct{ Allocations, Limits v1.ResourceList }
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		containerResources = make(map[string]struct{ Allocations, Limits v1.ResourceList }, len(containers))
-	}
 	for _, container := range containers {
 		status := &v1.ContainerStatus{
 			Name:  container.Name,
@@ -1793,9 +1792,6 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 			}
 		}
 		statuses[container.Name] = status
-		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-			containerResources[container.Name] = struct{ Allocations, Limits v1.ResourceList }{container.Resources.Requests, container.Resources.Limits}
-		}
 	}
 
 	for _, container := range containers {
@@ -1887,43 +1883,57 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 				var requests, limits v1.ResourceList
 				// oldStatus should always exist if container is running
 				oldStatus, oldStatusFound := oldStatuses[cName]
-				// Set initial limits from container's spec upon transition to Running state
+				// Set initial limits/requests from container's spec upon transition to Running state
 				// For cpu & memory, limits queried from runtime via CRI always supercedes spec.limit
-				// For ephemeral-storage, a running container's status.limit equals spec.limit
-				determineResource := func(rName v1.ResourceName, ctrStsRes, ctrRes, oldStsRes, resource v1.ResourceList) {
-					if res, found := ctrStsRes[rName]; found {
-						resource[rName] = res.DeepCopy()
+				// For ephemeral-storage, a running container's status.limit/request equals spec.limit/request
+				determineResource := func(rName v1.ResourceName, kubeContainerStatusResource, v1ContainerResource, oldStatusResource, resource v1.ResourceList) {
+					if r, found := kubeContainerStatusResource[rName]; found {
+						resource[rName] = r.DeepCopy()
 						return
 					}
 					if oldStatusFound {
 						if oldStatus.State.Running == nil || status.ContainerID != oldStatus.ContainerID {
-							if res, exists := ctrRes[rName]; exists {
-								resource[rName] = res.DeepCopy()
+							if r, exists := v1ContainerResource[rName]; exists {
+								resource[rName] = r.DeepCopy()
 							}
 						} else {
-							if oldStsRes != nil {
-								if res, exists := oldStsRes[rName]; exists {
-									resource[rName] = res.DeepCopy()
+							if oldStatusResource != nil {
+								if r, exists := oldStatusResource[rName]; exists {
+									resource[rName] = r.DeepCopy()
 								}
 							}
 						}
 					}
 				}
-				if containerResources[cName].Limits != nil {
+				container := kubecontainer.GetContainerSpec(pod, cName)
+				// Read ResourcesAllocated from checkpoint. It is the source-of-truth.
+				found := false
+				checkpointState := kl.statusManager.State()
+				status.ResourcesAllocated, found = checkpointState.GetContainerResourceAllocation(string(pod.UID), cName)
+				if !(container.Resources.Requests == nil && container.Resources.Limits == nil) && !found {
+					// Log error and fallback to ResourcesAllocated in oldStatus if it exists
+					klog.ErrorS(nil, "resource allocation not found in checkpoint store", "pod", pod.Name, "container", cName)
+					if oldStatusFound {
+						status.ResourcesAllocated = oldStatus.ResourcesAllocated
+					}
+				}
+				// Determine Limits
+				if container.Resources.Limits != nil {
 					limits = make(v1.ResourceList)
-					determineResource(v1.ResourceCPU, cStatus.Resources.Limits, containerResources[cName].Limits, oldStatus.Resources.Limits, limits)
-					determineResource(v1.ResourceMemory, cStatus.Resources.Limits, containerResources[cName].Limits, oldStatus.Resources.Limits, limits)
-					if ephemeralStorage, found := containerResources[cName].Limits[v1.ResourceEphemeralStorage]; found {
+					determineResource(v1.ResourceCPU, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					determineResource(v1.ResourceMemory, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					if ephemeralStorage, found := container.Resources.Limits[v1.ResourceEphemeralStorage]; found {
 						limits[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
 					}
 				}
-				if containerResources[cName].Allocations != nil {
+				// Determine Requests
+				if status.ResourcesAllocated != nil {
 					requests = make(v1.ResourceList)
-					determineResource(v1.ResourceCPU, cStatus.Resources.Requests, containerResources[cName].Allocations, oldStatus.Resources.Requests, requests)
-					if memory, found := containerResources[cName].Allocations[v1.ResourceMemory]; found {
+					determineResource(v1.ResourceCPU, cStatus.Resources.Requests, status.ResourcesAllocated, oldStatus.Resources.Requests, requests)
+					if memory, found := status.ResourcesAllocated[v1.ResourceMemory]; found {
 						requests[v1.ResourceMemory] = memory.DeepCopy()
 					}
-					if ephemeralStorage, found := containerResources[cName].Allocations[v1.ResourceEphemeralStorage]; found {
+					if ephemeralStorage, found := status.ResourcesAllocated[v1.ResourceEphemeralStorage]; found {
 						requests[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
 					}
 				}
@@ -1931,9 +1941,6 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 					Limits:   limits,
 					Requests: requests,
 				}
-				//Always read ResourcesAllocated from checkpoint. It is the source-of-truth.
-				checkpointState := kl.statusManager.State()
-				status.ResourcesAllocated, _ = checkpointState.GetContainerResourceAllocation(string(pod.UID), cName)
 			}
 		}
 		if containerSeen[cName] == 0 {

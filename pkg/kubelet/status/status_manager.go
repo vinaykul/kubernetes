@@ -77,8 +77,6 @@ type manager struct {
 	podDeletionSafety PodDeletionSafetyProvider
 	// state allows to save/restore pod resource allocation and tolerate kubelet restarts.
 	state state.State
-	// lastUpdatedstate holds state for each container from the last time it was updated.
-	lastUpdateState state.State
 	// stateFileDirectory holds the directory where the state file for checkpoints is held.
 	stateFileDirectory string
 }
@@ -128,10 +126,10 @@ type Manager interface {
 	State() state.Reader
 
 	// SetPodAllocation checkpoints the resources allocated to a pod's containers.
-	SetPodAllocation(pod *v1.Pod)
+	SetPodAllocation(pod *v1.Pod) error
 
 	// SetPodResizeState checkpoints the last resizing decision for the pod.
-	SetPodResizeState(podUID types.UID, resize v1.ResourcesResizeStatus)
+	SetPodResizeState(podUID types.UID, resize v1.ResourcesResizeStatus) error
 }
 
 const syncPeriod = 10 * time.Second
@@ -145,7 +143,6 @@ func NewManager(kubeClient clientset.Interface, podManager kubepod.Manager, podD
 		podStatusChannel:   make(chan podStatusSyncRequest, 1000), // Buffer up to 1000 statuses
 		apiStatusVersions:  make(map[kubetypes.MirrorPodUID]uint64),
 		podDeletionSafety:  podDeletionSafety,
-		lastUpdateState:    state.NewStateMemory(),
 		stateFileDirectory: stateFileDirectory,
 	}
 }
@@ -217,7 +214,7 @@ func (m *manager) State() state.Reader {
 }
 
 // SetPodAllocation checkpoints the resources allocated to a pod's containers
-func (m *manager) SetPodAllocation(pod *v1.Pod) {
+func (m *manager) SetPodAllocation(pod *v1.Pod) error {
 	m.podStatusesLock.RLock()
 	defer m.podStatusesLock.RUnlock()
 	for _, container := range pod.Spec.Containers {
@@ -225,16 +222,18 @@ func (m *manager) SetPodAllocation(pod *v1.Pod) {
 		if container.Resources.Requests != nil {
 			alloc = container.Resources.Requests.DeepCopy()
 		}
-		m.state.SetContainerResourceAllocation(string(pod.UID), container.Name, alloc)
+		if err := m.state.SetContainerResourceAllocation(string(pod.UID), container.Name, alloc); err != nil {
+			return err
+		}
 	}
-	m.updateStatusInternal(pod, pod.Status, false)
+	return nil
 }
 
 // SetPodResizeState checkpoints the last resizing decision for the pod.
-func (m *manager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) {
+func (m *manager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) error {
 	m.podStatusesLock.RLock()
 	defer m.podStatusesLock.RUnlock()
-	m.state.SetPodResizeState(string(podUID), resizeState)
+	return m.state.SetPodResizeState(string(podUID), resizeState)
 }
 
 func (m *manager) GetPodStatus(uid types.UID) (v1.PodStatus, bool) {

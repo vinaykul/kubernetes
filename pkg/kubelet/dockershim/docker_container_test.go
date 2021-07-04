@@ -200,9 +200,8 @@ func TestContainerStatus(t *testing.T) {
 		Labels:      config.Labels,
 		Annotations: config.Annotations,
 		Resources: &runtimeapi.ContainerResources{
-			R: &runtimeapi.ContainerResources_Linux{
-				Linux: &runtimeapi.LinuxContainerResources{},
-			},
+			//TODO: Add real values to this test
+			Linux: &runtimeapi.LinuxContainerResources{},
 		},
 	}
 
