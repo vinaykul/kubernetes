@@ -6109,61 +6109,61 @@ func TestValidatePullPolicy(t *testing.T) {
 func TestValidateResizePolicy(t *testing.T) {
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodVerticalScaling, true)()
 	type T struct {
-		PolicyList  []core.ResizePolicy
+		PolicyList  []core.ContainerResizePolicy
 		ExpectError bool
 	}
 	testCases := map[string]T{
 		"ValidCPUandMemoryPolicies": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "cpu", Policy: "RestartNotRequired"},
-				{ResourceName: "memory", Policy: "Restart"},
+				{ResourceName: "memory", Policy: "RestartRequired"},
 			},
 			false,
 		},
 		"ValidCPUPolicy": {
-			[]core.ResizePolicy{
-				{ResourceName: "cpu", Policy: "Restart"},
+			[]core.ContainerResizePolicy{
+				{ResourceName: "cpu", Policy: "RestartRequired"},
 			},
 			false,
 		},
 		"ValidMemoryPolicy": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "memory", Policy: "RestartNotRequired"},
 			},
 			false,
 		},
 		"NoPolicy": {
-			[]core.ResizePolicy{},
+			[]core.ContainerResizePolicy{},
 			false,
 		},
 		"ValidCPUandInvalidMemoryPolicy": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "cpu", Policy: "RestartNotRequired"},
 				{ResourceName: "memory", Policy: "Restarrrt"},
 			},
 			true,
 		},
 		"ValidMemoryandInvalidCPUPolicy": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "cpu", Policy: "RestartNotRequirrred"},
 				{ResourceName: "memory", Policy: "Restart"},
 			},
 			true,
 		},
 		"InvalidResourceNameValidPolicy": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "cpuuu", Policy: "RestartNotRequired"},
 			},
 			true,
 		},
 		"ValidResourceNameMissingPolicy": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "memory", Policy: ""},
 			},
 			true,
 		},
 		"RepeatedPolicies": {
-			[]core.ResizePolicy{
+			[]core.ContainerResizePolicy{
 				{ResourceName: "cpu", Policy: "RestartNotRequired"},
 				{ResourceName: "memory", Policy: "Restart"},
 				{ResourceName: "cpu", Policy: "Restart"},

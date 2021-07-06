@@ -2826,9 +2826,9 @@ func validatePullPolicy(policy core.PullPolicy, fldPath *field.Path) field.Error
 }
 
 var supportedResizeResources = sets.NewString(string(core.ResourceCPU), string(core.ResourceMemory))
-var supportedResizePolicies = sets.NewString(string(core.RestartNotRequired), string(core.Restart))
+var supportedResizePolicies = sets.NewString(string(core.RestartNotRequired), string(core.RestartRequired))
 
-func validateResizePolicy(policyList []core.ResizePolicy, fldPath *field.Path) field.ErrorList {
+func validateResizePolicy(policyList []core.ContainerResizePolicy, fldPath *field.Path) field.ErrorList {
 	allErrors := field.ErrorList{}
 
 	// validate that resource name is not repeated, supported resource names and policy values are specified
@@ -2846,7 +2846,7 @@ func validateResizePolicy(policyList []core.ResizePolicy, fldPath *field.Path) f
 			allErrors = append(allErrors, field.NotSupported(fldPath, p.ResourceName, supportedResizeResources.List()))
 		}
 		switch p.Policy {
-		case core.RestartNotRequired, core.Restart:
+		case core.RestartNotRequired, core.RestartRequired:
 		case "":
 			allErrors = append(allErrors, field.Required(fldPath, ""))
 		default:
@@ -2961,7 +2961,7 @@ func validateInitContainers(containers, otherContainers []core.Container, device
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("startupProbe"), ctr.StartupProbe, "must not be set for init containers"))
 		}
 		if len(ctr.ResizePolicy) > 0 {
-			allErrs = append(allErrs, field.Invalid(idxPath.Child("resizePolicy"), ctr.StartupProbe, "must not be set for init containers"))
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("resizePolicy"), ctr.ResizePolicy, "must not be set for init containers"))
 		}
 	}
 	return allErrs
@@ -4077,16 +4077,27 @@ func validateSeccompAnnotationsAndFieldsMatch(annotationValue string, seccompFie
 	return nil
 }
 
+var updatablePodSpecFields = []string{
+	"`spec.containers[*].image`",
+	"`spec.initContainers[*].image`",
+	"`spec.activeDeadlineSeconds`",
+	"`spec.tolerations` (only additions to existing tolerations)",
+	"`spec.terminationGracePeriodSeconds` (allow it to be set to 1 if it was previously negative)",
+	"`spec.containers[*].resources` (for CPU/memory only)",
+}
+
+//TODO(vinaykul): Drop this var once InPlacePodVerticalScaling goes GA and featuregate is gone.
+var updatablePodSpecFieldsNoResources = []string{
+	"`spec.containers[*].image`",
+	"`spec.initContainers[*].image`",
+	"`spec.activeDeadlineSeconds`",
+	"`spec.tolerations` (only additions to existing tolerations)",
+	"`spec.terminationGracePeriodSeconds` (allow it to be set to 1 if it was previously negative)",
+}
+
 // ValidatePodUpdate tests to see if the update is legal for an end user to make. newPod is updated with fields
 // that cannot be changed.
 func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) field.ErrorList {
-	updatableSpecFields := []string{
-		"`spec.containers[*].image`",
-		"`spec.initContainers[*].image`",
-		"`spec.activeDeadlineSeconds`",
-		"`spec.tolerations` (only additions to existing tolerations)",
-		"`spec.terminationGracePeriodSeconds` (allow it to be set to 1 if it was previously negative)",
-	}
 	fldPath := field.NewPath("metadata")
 	allErrs := ValidateObjectMetaUpdate(&newPod.ObjectMeta, &oldPod.ObjectMeta, fldPath)
 	allErrs = append(allErrs, validatePodMetadataAndSpec(newPod, opts)...)
@@ -4140,6 +4151,10 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		//TODO(vinaykul): Investigate if we can use PodStatus.QOSClass in kubelet and elsewhere
+		//    Once we can rely on Status persistence, drop this block. QOSClass does not change
+		//    once it is bootstrapped on podCreate. This needs to be addressed before beta.
+		//    Ref: https://github.com/kubernetes/kubernetes/pull/102884/#discussion_r663280487
 		// reject attempts to change pod qos
 		oldQoS := qos.GetPodQOS(oldPod)
 		newQoS := qos.GetPodQOS(newPod)
@@ -4155,7 +4170,6 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 	for ix, container := range mungedPodSpec.Containers {
 		container.Image = oldPod.Spec.Containers[ix].Image // +k8s:verify-mutation:reason=clone
 		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-			updatableSpecFields = append(updatableSpecFields, "`spec.containers[*].resources` (for CPU/memory only)")
 			// Resources are mutable for CPU & memory only
 			//   - user can now modify Resources to express new desired Resources
 			mungeCpuMemResources := func(resourceList, oldResourceList core.ResourceList) core.ResourceList {
@@ -4210,34 +4224,11 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 		// This diff isn't perfect, but it's a helluva lot better an "I'm not going to tell you what the difference is".
 		//TODO: Pinpoint the specific field that causes the invalid error after we have strategic merge diff
 		specDiff := diff.ObjectDiff(mungedPodSpec, oldPod.Spec)
-		allErrs = append(allErrs, field.Forbidden(specPath, fmt.Sprintf("pod updates may not change fields other than %s\n%v", strings.Join(updatableSpecFields, ","), specDiff)))
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		if len(allErrs) == 0 {
-			for i, c := range newPod.Spec.Containers {
-				if c.Resources.Requests == nil {
-					continue
-				}
-				if diff.ObjectDiff(oldPod.Spec.Containers[i].Resources, c.Resources) == "" {
-					continue
-				}
-				findContainerStatus := func(css []core.ContainerStatus, cName string) (core.ContainerStatus, bool) {
-					for i := range css {
-						if css[i].Name == cName {
-							return css[i], true
-						}
-					}
-					return core.ContainerStatus{}, false
-				}
-				if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
-					if diff.ObjectDiff(c.Resources.Requests, cs.ResourcesAllocated) != "" {
-						newPod.Status.Resize = core.Proposed
-						break
-					}
-				}
-			}
+		errs := field.Forbidden(specPath, fmt.Sprintf("pod updates may not change fields other than %s\n%v", strings.Join(updatablePodSpecFieldsNoResources, ","), specDiff))
+		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+			errs = field.Forbidden(specPath, fmt.Sprintf("pod updates may not change fields other than %s\n%v", strings.Join(updatablePodSpecFields, ","), specDiff))
 		}
+		allErrs = append(allErrs, errs)
 	}
 
 	return allErrs
