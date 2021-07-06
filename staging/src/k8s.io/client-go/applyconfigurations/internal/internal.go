@@ -3512,7 +3512,7 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         list:
           elementType:
-            namedType: io.k8s.api.core.v1.ResizePolicy
+            namedType: io.k8s.api.core.v1.ContainerResizePolicy
           elementRelationship: atomic
     - name: resources
       type:
@@ -3590,6 +3590,17 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: string
       default: TCP
+- name: io.k8s.api.core.v1.ContainerResizePolicy
+  map:
+    fields:
+    - name: policy
+      type:
+        scalar: string
+      default: ""
+    - name: resourceName
+      type:
+        scalar: string
+      default: ""
 - name: io.k8s.api.core.v1.ContainerState
   map:
     fields:
@@ -3916,7 +3927,7 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         list:
           elementType:
-            namedType: io.k8s.api.core.v1.ResizePolicy
+            namedType: io.k8s.api.core.v1.ContainerResizePolicy
           elementRelationship: atomic
     - name: resources
       type:
@@ -5801,17 +5812,6 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         scalar: numeric
       default: 0
-- name: io.k8s.api.core.v1.ResizePolicy
-  map:
-    fields:
-    - name: policy
-      type:
-        scalar: string
-      default: ""
-    - name: resourceName
-      type:
-        scalar: string
-      default: ""
 - name: io.k8s.api.core.v1.ResourceFieldSelector
   map:
     fields:

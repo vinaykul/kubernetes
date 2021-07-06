@@ -129,7 +129,7 @@ func (b *EphemeralContainerApplyConfiguration) WithResources(value *ResourceRequ
 // WithResizePolicy adds the given value to the ResizePolicy field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the ResizePolicy field.
-func (b *EphemeralContainerApplyConfiguration) WithResizePolicy(values ...*ResizePolicyApplyConfiguration) *EphemeralContainerApplyConfiguration {
+func (b *EphemeralContainerApplyConfiguration) WithResizePolicy(values ...*ContainerResizePolicyApplyConfiguration) *EphemeralContainerApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithResizePolicy")

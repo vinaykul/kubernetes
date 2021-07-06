@@ -687,8 +687,9 @@ message Container {
   optional ResourceRequirements resources = 8;
 
   // Resources resize policy for the container.
+  // +featureGate=InPlacePodVerticalScaling
   // +optional
-  repeated ResizePolicy resizePolicy = 23;
+  repeated ContainerResizePolicy resizePolicy = 23;
 
   // Pod volumes to mount into the container's filesystem.
   // Cannot be updated.
@@ -830,6 +831,17 @@ message ContainerPort {
   optional string hostIP = 5;
 }
 
+// ContainerResizePolicy represents resource resize policy for a single container.
+message ContainerResizePolicy {
+  // Name of the resource type to which this resource resize policy applies.
+  // Supported values: cpu, memory.
+  optional string resourceName = 1;
+
+  // Resource resize policy applicable to the above mentioned resource.
+  // If not specified, it defaults to RestartNotRequired.
+  optional string policy = 2;
+}
+
 // ContainerState holds a possible state of container.
 // Only one of its members may be specified.
 // If none of them is specified, the default one is ContainerStateWaiting.
@@ -938,10 +950,12 @@ message ContainerStatus {
   optional bool started = 9;
 
   // Node compute resources allocated for the container.
+  // +featureGate=InPlacePodVerticalScaling
   // +optional
   map<string, k8s.io.apimachinery.pkg.api.resource.Quantity> resourcesAllocated = 10;
 
   // Compute resource requests and limits enacted on the running container.
+  // +featureGate=InPlacePodVerticalScaling
   // +optional
   optional ResourceRequirements resources = 11;
 }
@@ -1293,8 +1307,9 @@ message EphemeralContainerCommon {
   optional ResourceRequirements resources = 8;
 
   // Resources resize policy for the container.
+  // +featureGate=InPlacePodVerticalScaling
   // +optional
-  repeated ResizePolicy resizePolicy = 23;
+  repeated ContainerResizePolicy resizePolicy = 23;
 
   // Pod volumes to mount into the container's filesystem.
   // Cannot be updated.
@@ -3758,8 +3773,9 @@ message PodStatus {
   // +optional
   repeated ContainerStatus ephemeralContainerStatuses = 13;
 
-  // Status of a resources resize request for pod's containers.
+  // Status of resources resize desired for pod's containers.
   // It is empty if no resources resize is pending.
+  // +featureGate=InPlacePodVerticalScaling
   // +optional
   optional string resize = 14;
 }
@@ -4215,16 +4231,6 @@ message ReplicationControllerStatus {
   // +patchMergeKey=type
   // +patchStrategy=merge
   repeated ReplicationControllerCondition conditions = 6;
-}
-
-// ResizePolicy represents the resource resize policy for a single container.
-message ResizePolicy {
-  // Name of the resource type to which this resize policy applies.
-  // Supported values: cpu, memory.
-  optional string resourceName = 1;
-
-  // Container resize policy applicable to the above resource.
-  optional string policy = 2;
 }
 
 // ResourceFieldSelector represents container resources (cpu, memory) and their output format

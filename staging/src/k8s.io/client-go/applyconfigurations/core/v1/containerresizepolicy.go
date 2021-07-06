@@ -22,23 +22,23 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-// ResizePolicyApplyConfiguration represents an declarative configuration of the ResizePolicy type for use
+// ContainerResizePolicyApplyConfiguration represents an declarative configuration of the ContainerResizePolicy type for use
 // with apply.
-type ResizePolicyApplyConfiguration struct {
-	ResourceName *v1.ResourceName          `json:"resourceName,omitempty"`
-	Policy       *v1.ContainerResizePolicy `json:"policy,omitempty"`
+type ContainerResizePolicyApplyConfiguration struct {
+	ResourceName *v1.ResourceName         `json:"resourceName,omitempty"`
+	Policy       *v1.ResourceResizePolicy `json:"policy,omitempty"`
 }
 
-// ResizePolicyApplyConfiguration constructs an declarative configuration of the ResizePolicy type for use with
+// ContainerResizePolicyApplyConfiguration constructs an declarative configuration of the ContainerResizePolicy type for use with
 // apply.
-func ResizePolicy() *ResizePolicyApplyConfiguration {
-	return &ResizePolicyApplyConfiguration{}
+func ContainerResizePolicy() *ContainerResizePolicyApplyConfiguration {
+	return &ContainerResizePolicyApplyConfiguration{}
 }
 
 // WithResourceName sets the ResourceName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceName field is set to the value of the last call.
-func (b *ResizePolicyApplyConfiguration) WithResourceName(value v1.ResourceName) *ResizePolicyApplyConfiguration {
+func (b *ContainerResizePolicyApplyConfiguration) WithResourceName(value v1.ResourceName) *ContainerResizePolicyApplyConfiguration {
 	b.ResourceName = &value
 	return b
 }
@@ -46,7 +46,7 @@ func (b *ResizePolicyApplyConfiguration) WithResourceName(value v1.ResourceName)
 // WithPolicy sets the Policy field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Policy field is set to the value of the last call.
-func (b *ResizePolicyApplyConfiguration) WithPolicy(value v1.ContainerResizePolicy) *ResizePolicyApplyConfiguration {
+func (b *ContainerResizePolicyApplyConfiguration) WithPolicy(value v1.ResourceResizePolicy) *ContainerResizePolicyApplyConfiguration {
 	b.Policy = &value
 	return b
 }

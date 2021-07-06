@@ -378,6 +378,16 @@ func (ContainerPort) SwaggerDoc() map[string]string {
 	return map_ContainerPort
 }
 
+var map_ContainerResizePolicy = map[string]string{
+	"":             "ContainerResizePolicy represents resource resize policy for a single container.",
+	"resourceName": "Name of the resource type to which this resource resize policy applies. Supported values: cpu, memory.",
+	"policy":       "Resource resize policy applicable to the above mentioned resource. If not specified, it defaults to RestartNotRequired.",
+}
+
+func (ContainerResizePolicy) SwaggerDoc() map[string]string {
+	return map_ContainerResizePolicy
+}
+
 var map_ContainerState = map[string]string{
 	"":           "ContainerState holds a possible state of container. Only one of its members may be specified. If none of them is specified, the default one is ContainerStateWaiting.",
 	"waiting":    "Details about a waiting container",
@@ -1674,7 +1684,7 @@ var map_PodStatus = map[string]string{
 	"containerStatuses":          "The list has one entry per container in the manifest. Each entry is currently the output of `docker inspect`. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-and-container-status",
 	"qosClass":                   "The Quality of Service (QOS) classification assigned to the pod based on resource requirements See PodQOSClass type for available QOS classes More info: https://git.k8s.io/community/contributors/design-proposals/node/resource-qos.md",
 	"ephemeralContainerStatuses": "Status for any ephemeral containers that have run in this pod. This field is alpha-level and is only populated by servers that enable the EphemeralContainers feature.",
-	"resize":                     "Status of a resources resize request for pod's containers. It is empty if no resources resize is pending.",
+	"resize":                     "Status of resources resize desired for pod's containers. It is empty if no resources resize is pending.",
 }
 
 func (PodStatus) SwaggerDoc() map[string]string {
@@ -1912,16 +1922,6 @@ var map_ReplicationControllerStatus = map[string]string{
 
 func (ReplicationControllerStatus) SwaggerDoc() map[string]string {
 	return map_ReplicationControllerStatus
-}
-
-var map_ResizePolicy = map[string]string{
-	"":             "ResizePolicy represents the resource resize policy for a single container.",
-	"resourceName": "Name of the resource type to which this resize policy applies. Supported values: cpu, memory.",
-	"policy":       "Container resize policy applicable to the above resource.",
-}
-
-func (ResizePolicy) SwaggerDoc() map[string]string {
-	return map_ResizePolicy
 }
 
 var map_ResourceFieldSelector = map[string]string{
