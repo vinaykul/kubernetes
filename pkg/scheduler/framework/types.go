@@ -721,7 +721,7 @@ func calculateResource(pod *v1.Pod) (res Resource, non0CPU int64, non0Mem int64)
 		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 			_, cs, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, c.Name)
 			if found {
-				if pod.Status.Resize == v1.Infeasible {
+				if pod.Status.Resize == v1.PodResizeStatusInfeasible {
 					resPtr.Add(cs.ResourcesAllocated)
 					non0CPUReq, non0MemReq = schedutil.GetNonzeroRequests(&cs.ResourcesAllocated)
 				} else {

@@ -71,7 +71,7 @@ func (sc *stateCheckpoint) restoreState() error {
 	}
 
 	sc.cache.SetPodResourceAllocation(checkpoint.AllocationEntries)
-	sc.cache.SetResizeState(checkpoint.ResizeStateEntries)
+	sc.cache.SetResizeStatus(checkpoint.ResizeStatusEntries)
 	klog.V(2).InfoS("State checkpoint: restored pod resource allocation state from checkpoint")
 	return nil
 }
@@ -88,10 +88,10 @@ func (sc *stateCheckpoint) storeState() error {
 		}
 	}
 
-	podResizeState := sc.cache.GetResizeState()
-	checkpoint.ResizeStateEntries = make(map[string]v1.ResourcesResizeStatus)
-	for pUID, rState := range podResizeState {
-		checkpoint.ResizeStateEntries[pUID] = rState
+	podResizeStatus := sc.cache.GetResizeStatus()
+	checkpoint.ResizeStatusEntries = make(map[string]v1.PodResizeStatus)
+	for pUID, rStatus := range podResizeStatus {
+		checkpoint.ResizeStatusEntries[pUID] = rStatus
 	}
 
 	err := sc.checkpointManager.CreateCheckpoint(sc.checkpointName, checkpoint)
@@ -116,18 +116,18 @@ func (sc *stateCheckpoint) GetPodResourceAllocation() PodResourceAllocation {
 	return sc.cache.GetPodResourceAllocation()
 }
 
-// GetPodResizeState returns the last resize decision for a pod
-func (sc *stateCheckpoint) GetPodResizeState(podUID string) (v1.ResourcesResizeStatus, bool) {
+// GetPodResizeStatus returns the last resize decision for a pod
+func (sc *stateCheckpoint) GetPodResizeStatus(podUID string) (v1.PodResizeStatus, bool) {
 	sc.mux.RLock()
 	defer sc.mux.RUnlock()
-	return sc.cache.GetPodResizeState(podUID)
+	return sc.cache.GetPodResizeStatus(podUID)
 }
 
-// GetResizeState returns the set of resize decisions made
-func (sc *stateCheckpoint) GetResizeState() PodResizeState {
+// GetResizeStatus returns the set of resize decisions made
+func (sc *stateCheckpoint) GetResizeStatus() PodResizeStatus {
 	sc.mux.RLock()
 	defer sc.mux.RUnlock()
-	return sc.cache.GetResizeState()
+	return sc.cache.GetResizeStatus()
 }
 
 // SetContainerResourceAllocation sets resources allocated to a pod's container
@@ -146,19 +146,19 @@ func (sc *stateCheckpoint) SetPodResourceAllocation(a PodResourceAllocation) err
 	return sc.storeState()
 }
 
-// SetPodResizeState sets the last resize decision for a pod
-func (sc *stateCheckpoint) SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) error {
+// SetPodResizeStatus sets the last resize decision for a pod
+func (sc *stateCheckpoint) SetPodResizeStatus(podUID string, resizeStatus v1.PodResizeStatus) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
-	sc.cache.SetPodResizeState(podUID, resizeState)
+	sc.cache.SetPodResizeStatus(podUID, resizeStatus)
 	return sc.storeState()
 }
 
-// SetResizeState sets the resize decisions
-func (sc *stateCheckpoint) SetResizeState(rs PodResizeState) error {
+// SetResizeStatus sets the resize decisions
+func (sc *stateCheckpoint) SetResizeStatus(rs PodResizeStatus) error {
 	sc.mux.Lock()
 	defer sc.mux.Unlock()
-	sc.cache.SetResizeState(rs)
+	sc.cache.SetResizeStatus(rs)
 	return sc.storeState()
 }
 

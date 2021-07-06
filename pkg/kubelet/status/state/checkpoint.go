@@ -28,17 +28,17 @@ var _ checkpointmanager.Checkpoint = &PodResourceAllocationCheckpoint{}
 
 // PodResourceAllocationCheckpoint is used to store resources allocated to a pod in checkpoint
 type PodResourceAllocationCheckpoint struct {
-	AllocationEntries  map[string]map[string]v1.ResourceList `json:"allocationEntries,omitempty"`
-	ResizeStateEntries map[string]v1.ResourcesResizeStatus   `json:"resizeStateEntries,omitempty"`
-	Checksum           checksum.Checksum                     `json:"checksum"`
+	AllocationEntries   map[string]map[string]v1.ResourceList `json:"allocationEntries,omitempty"`
+	ResizeStatusEntries map[string]v1.PodResizeStatus         `json:"resizeStatusEntries,omitempty"`
+	Checksum            checksum.Checksum                     `json:"checksum"`
 }
 
 // NewPodResourceAllocationCheckpoint returns an instance of Checkpoint
 func NewPodResourceAllocationCheckpoint() *PodResourceAllocationCheckpoint {
 	//lint:ignore unexported-type-in-api user-facing error message
 	return &PodResourceAllocationCheckpoint{
-		AllocationEntries:  make(map[string]map[string]v1.ResourceList),
-		ResizeStateEntries: make(map[string]v1.ResourcesResizeStatus),
+		AllocationEntries:   make(map[string]map[string]v1.ResourceList),
+		ResizeStatusEntries: make(map[string]v1.PodResizeStatus),
 	}
 }
 

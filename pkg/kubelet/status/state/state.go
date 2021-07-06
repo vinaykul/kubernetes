@@ -23,8 +23,8 @@ import (
 // PodResourceAllocation type is used in tracking resources allocated to pod's containers
 type PodResourceAllocation map[string]map[string]v1.ResourceList
 
-// PodResizeState type is used in tracking the last resize decision for pod
-type PodResizeState map[string]v1.ResourcesResizeStatus
+// PodResizeStatus type is used in tracking the last resize decision for pod
+type PodResizeStatus map[string]v1.PodResizeStatus
 
 // Clone returns a copy of PodResourceAllocation
 func (pr PodResourceAllocation) Clone() PodResourceAllocation {
@@ -42,15 +42,15 @@ func (pr PodResourceAllocation) Clone() PodResourceAllocation {
 type Reader interface {
 	GetContainerResourceAllocation(podUID string, containerName string) (v1.ResourceList, bool)
 	GetPodResourceAllocation() PodResourceAllocation
-	GetPodResizeState(podUID string) (v1.ResourcesResizeStatus, bool)
-	GetResizeState() PodResizeState
+	GetPodResizeStatus(podUID string) (v1.PodResizeStatus, bool)
+	GetResizeStatus() PodResizeStatus
 }
 
 type writer interface {
 	SetContainerResourceAllocation(podUID string, containerName string, alloc v1.ResourceList) error
 	SetPodResourceAllocation(PodResourceAllocation) error
-	SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) error
-	SetResizeState(PodResizeState) error
+	SetPodResizeStatus(podUID string, resizeStatus v1.PodResizeStatus) error
+	SetResizeStatus(PodResizeStatus) error
 	Delete(podUID string, containerName string) error
 	ClearState() error
 }

@@ -2253,56 +2253,56 @@ func TestHandlePodResourcesResize(t *testing.T) {
 		pod                 *v1.Pod
 		newRequests         v1.ResourceList
 		expectedAllocations v1.ResourceList
-		expectedResize      v1.ResourcesResizeStatus
+		expectedResize      v1.PodResizeStatus
 	}{
 		{
 			name:                "Request CPU and memory decrease - expect InProgress",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu500m, v1.ResourceMemory: mem500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu500m, v1.ResourceMemory: mem500M},
-			expectedResize:      v1.InProgress,
+			expectedResize:      v1.PodResizeStatusInProgress,
 		},
 		{
 			name:                "Request CPU increase, memory decrease - expect InProgress",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu1500m, v1.ResourceMemory: mem500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu1500m, v1.ResourceMemory: mem500M},
-			expectedResize:      v1.InProgress,
+			expectedResize:      v1.PodResizeStatusInProgress,
 		},
 		{
 			name:                "Request CPU decrease, memory increase - expect InProgress",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu500m, v1.ResourceMemory: mem1500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu500m, v1.ResourceMemory: mem1500M},
-			expectedResize:      v1.InProgress,
+			expectedResize:      v1.PodResizeStatusInProgress,
 		},
 		{
 			name:                "Request CPU and memory increase beyond current capacity - expect Deferred",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu2500m, v1.ResourceMemory: mem2500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
-			expectedResize:      v1.Deferred,
+			expectedResize:      v1.PodResizeStatusDeferred,
 		},
 		{
 			name:                "Request CPU decrease and memory increase beyond current capacity - expect Deferred",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu500m, v1.ResourceMemory: mem2500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
-			expectedResize:      v1.Deferred,
+			expectedResize:      v1.PodResizeStatusDeferred,
 		},
 		{
 			name:                "Request memory increase beyond node capacity - expect Infeasible",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem4500M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
-			expectedResize:      v1.Infeasible,
+			expectedResize:      v1.PodResizeStatusInfeasible,
 		},
 		{
 			name:                "Request CPU increase beyond node capacity - expect Infeasible",
 			pod:                 testPod2,
 			newRequests:         v1.ResourceList{v1.ResourceCPU: cpu5000m, v1.ResourceMemory: mem1000M},
 			expectedAllocations: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
-			expectedResize:      v1.Infeasible,
+			expectedResize:      v1.PodResizeStatusInfeasible,
 		},
 	}
 

@@ -574,7 +574,7 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 	if len(diff.ObjectDiff(container.Resources, containerStatus.Resources)) == 0 {
 		return true
 	}
-	resizePolicy := make(map[v1.ResourceName]v1.ContainerResizePolicy)
+	resizePolicy := make(map[v1.ResourceName]v1.ResourceResizePolicy)
 	for _, pol := range container.ResizePolicy {
 		resizePolicy[pol.ResourceName] = pol.Policy
 	}
@@ -582,7 +582,7 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 		if specValue == statusValue {
 			return false, false
 		}
-		if resizePolicy[rName] == v1.Restart {
+		if resizePolicy[rName] == v1.RestartRequired {
 			return true, true
 		}
 		return true, false

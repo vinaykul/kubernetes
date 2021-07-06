@@ -1657,14 +1657,14 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 		}
 		if !specStatusDiffer {
 			// Clear last resize state from checkpoint
-			if err := kl.statusManager.SetPodResizeState(pod.UID, ""); err != nil {
+			if err := kl.statusManager.SetPodResizeStatus(pod.UID, ""); err != nil {
 				//TODO(vinaykul): Can we recover from this in some way? Investigate
-				klog.ErrorS(err, "SetPodResizeState failed", "pod", pod.Name)
+				klog.ErrorS(err, "SetPodResizeStatus failed", "pod", pod.Name)
 			}
 		} else {
 			checkpointState := kl.statusManager.State()
-			if resizeState, found := checkpointState.GetPodResizeState(string(pod.UID)); found {
-				apiPodStatus.Resize = resizeState
+			if resizeStatus, found := checkpointState.GetPodResizeStatus(string(pod.UID)); found {
+				apiPodStatus.Resize = resizeStatus
 			}
 		}
 	}

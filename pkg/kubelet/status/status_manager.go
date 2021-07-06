@@ -128,8 +128,8 @@ type Manager interface {
 	// SetPodAllocation checkpoints the resources allocated to a pod's containers.
 	SetPodAllocation(pod *v1.Pod) error
 
-	// SetPodResizeState checkpoints the last resizing decision for the pod.
-	SetPodResizeState(podUID types.UID, resize v1.ResourcesResizeStatus) error
+	// SetPodResizeStatus checkpoints the last resizing decision for the pod.
+	SetPodResizeStatus(podUID types.UID, resize v1.PodResizeStatus) error
 }
 
 const syncPeriod = 10 * time.Second
@@ -229,11 +229,11 @@ func (m *manager) SetPodAllocation(pod *v1.Pod) error {
 	return nil
 }
 
-// SetPodResizeState checkpoints the last resizing decision for the pod.
-func (m *manager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) error {
+// SetPodResizeStatus checkpoints the last resizing decision for the pod.
+func (m *manager) SetPodResizeStatus(podUID types.UID, resizeStatus v1.PodResizeStatus) error {
 	m.podStatusesLock.RLock()
 	defer m.podStatusesLock.RUnlock()
-	return m.state.SetPodResizeState(string(podUID), resizeState)
+	return m.state.SetPodResizeStatus(string(podUID), resizeStatus)
 }
 
 func (m *manager) GetPodStatus(uid types.UID) (v1.PodStatus, bool) {

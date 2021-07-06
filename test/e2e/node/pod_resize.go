@@ -65,14 +65,14 @@ type TestContainerInfo struct {
 	Name        string
 	Resources   *ContainerResources
 	Allocations *ContainerAllocations
-	CPUPolicy   *v1.ContainerResizePolicy
-	MemPolicy   *v1.ContainerResizePolicy
+	CPUPolicy   *v1.ResourceResizePolicy
+	MemPolicy   *v1.ResourceResizePolicy
 }
 
-func getTestResourceInfo(tcInfo TestContainerInfo) (v1.ResourceRequirements, v1.ResourceList, []v1.ResizePolicy) {
+func getTestResourceInfo(tcInfo TestContainerInfo) (v1.ResourceRequirements, v1.ResourceList, []v1.ContainerResizePolicy) {
 	var res v1.ResourceRequirements
 	var alloc v1.ResourceList
-	var resizePol []v1.ResizePolicy
+	var resizePol []v1.ContainerResizePolicy
 
 	if tcInfo.Resources != nil {
 		var lim, req v1.ResourceList
@@ -116,11 +116,11 @@ func getTestResourceInfo(tcInfo TestContainerInfo) (v1.ResourceRequirements, v1.
 
 	}
 	if tcInfo.CPUPolicy != nil {
-		cpuPol := v1.ResizePolicy{ResourceName: v1.ResourceCPU, Policy: *tcInfo.CPUPolicy}
+		cpuPol := v1.ContainerResizePolicy{ResourceName: v1.ResourceCPU, Policy: *tcInfo.CPUPolicy}
 		resizePol = append(resizePol, cpuPol)
 	}
 	if tcInfo.MemPolicy != nil {
-		memPol := v1.ResizePolicy{ResourceName: v1.ResourceMemory, Policy: *tcInfo.MemPolicy}
+		memPol := v1.ContainerResizePolicy{ResourceName: v1.ResourceMemory, Policy: *tcInfo.MemPolicy}
 		resizePol = append(resizePol, memPol)
 	}
 	return res, alloc, resizePol
@@ -291,6 +291,7 @@ func doPodResizeTest() {
 	}
 
 	noRestart := v1.RestartNotRequired
+	doRestart := v1.RestartRequired
 	tests := []testCase{
 		{
 			name: "Guaranteed QoS pod, one container - increase CPU & memory",
@@ -795,6 +796,28 @@ func doPodResizeTest() {
 				{
 					Name:      "c1",
 					Resources: &ContainerResources{CPUReq: "200m", MemReq: "400Mi"},
+				},
+			},
+		},
+		{
+			name: "Guaranteed QoS pod, one container - increase CPU (RestartNotRequired) & memory (RestartRequired)",
+			containers: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "100m", CPULim: "100m", MemReq: "200Mi", MemLim: "200Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &doRestart,
+				},
+			},
+			patchString: `{"spec":{"containers":[
+					{"name":"c1", "resources":{"requests":{"cpu":"200m","memory":"400Mi"},"limits":{"cpu":"200m","memory":"400Mi"}}}
+				]}}`,
+			expected: []TestContainerInfo{
+				{
+					Name:      "c1",
+					Resources: &ContainerResources{CPUReq: "200m", CPULim: "200m", MemReq: "400Mi", MemLim: "400Mi"},
+					CPUPolicy: &noRestart,
+					MemPolicy: &doRestart,
 				},
 			},
 		},

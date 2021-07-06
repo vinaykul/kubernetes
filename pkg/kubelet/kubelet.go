@@ -2274,7 +2274,7 @@ func (kl *Kubelet) HandlePodSyncs(pods []*v1.Pod) {
 	}
 }
 
-func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.ResourcesResizeStatus) {
+func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.PodResizeStatus) {
 	var otherActivePods []*v1.Pod
 
 	node, err := kl.getNodeAnyWay()
@@ -2288,7 +2288,7 @@ func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.ResourcesResizeS
 	memRequests := resource.GetResourceRequest(pod, v1.ResourceMemory)
 	if cpuRequests > cpuAvailable || memRequests > memAvailable {
 		klog.V(2).InfoS("Resize is not feasible as request exceeds available node resources", "Pod", pod.Name)
-		return false, nil, v1.Infeasible
+		return false, nil, v1.PodResizeStatusInfeasible
 	}
 
 	// Treat the existing pod needing resize as a new pod with desired resources seeking admit.
@@ -2303,7 +2303,7 @@ func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.ResourcesResizeS
 	if ok, failReason, failMessage := kl.canAdmitPod(otherActivePods, pod); !ok {
 		// Log reason and return. Let the next sync iteration retry the resize
 		klog.V(2).InfoS("Resize cannot be accommodated", "Pod", pod.Name, "Reason", failReason, "Message", failMessage)
-		return false, nil, v1.Deferred
+		return false, nil, v1.PodResizeStatusDeferred
 	}
 
 	podCopy := pod.DeepCopy()
@@ -2313,7 +2313,7 @@ func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.ResourcesResizeS
 			podCopy.Status.ContainerStatuses[idx].ResourcesAllocated[rName] = rQuantity
 		}
 	}
-	return true, podCopy, v1.InProgress
+	return true, podCopy, v1.PodResizeStatusInProgress
 }
 
 func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
@@ -2345,7 +2345,7 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
 
 	kl.podResizeMutex.Lock()
 	defer kl.podResizeMutex.Unlock()
-	fit, updatedPod, resizeState := kl.canResizePod(pod)
+	fit, updatedPod, resizeStatus := kl.canResizePod(pod)
 	if fit {
 		// Update pod resource allocation checkpoint
 		if err := kl.statusManager.SetPodAllocation(updatedPod); err != nil {
@@ -2354,13 +2354,13 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
 		}
 		*pod = *updatedPod
 	}
-	if resizeState != "" {
+	if resizeStatus != "" {
 		// Save resize decision to checkpoint
-		if err := kl.statusManager.SetPodResizeState(pod.UID, resizeState); err != nil {
+		if err := kl.statusManager.SetPodResizeStatus(pod.UID, resizeStatus); err != nil {
 			//TODO(vinaykul): Can we recover from this in some way? Investigate
-			klog.ErrorS(err, "SetPodResizeState failed", "pod", format.Pod(pod))
+			klog.ErrorS(err, "SetPodResizeStatus failed", "pod", format.Pod(pod))
 		}
-		pod.Status.Resize = resizeState
+		pod.Status.Resize = resizeStatus
 	}
 	kl.podManager.UpdatePod(pod)
 	kl.statusManager.SetPodStatus(pod, pod.Status)

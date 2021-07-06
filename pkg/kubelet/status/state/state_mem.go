@@ -25,8 +25,8 @@ import (
 
 type stateMemory struct {
 	sync.RWMutex
-	podAllocation  PodResourceAllocation
-	podResizeState PodResizeState
+	podAllocation   PodResourceAllocation
+	podResizeStatus PodResizeStatus
 }
 
 var _ State = &stateMemory{}
@@ -35,8 +35,8 @@ var _ State = &stateMemory{}
 func NewStateMemory() State {
 	klog.V(2).InfoS("Initialized new in-memory state store for pod resource allocation tracking")
 	return &stateMemory{
-		podAllocation:  PodResourceAllocation{},
-		podResizeState: PodResizeState{},
+		podAllocation:   PodResourceAllocation{},
+		podResizeStatus: PodResizeStatus{},
 	}
 }
 
@@ -54,19 +54,19 @@ func (s *stateMemory) GetPodResourceAllocation() PodResourceAllocation {
 	return s.podAllocation.Clone()
 }
 
-func (s *stateMemory) GetPodResizeState(podUID string) (v1.ResourcesResizeStatus, bool) {
+func (s *stateMemory) GetPodResizeStatus(podUID string) (v1.PodResizeStatus, bool) {
 	s.RLock()
 	defer s.RUnlock()
 
-	resizeState, ok := s.podResizeState[podUID]
-	return resizeState, ok
+	resizeStatus, ok := s.podResizeStatus[podUID]
+	return resizeStatus, ok
 }
 
-func (s *stateMemory) GetResizeState() PodResizeState {
+func (s *stateMemory) GetResizeStatus() PodResizeStatus {
 	s.RLock()
 	defer s.RUnlock()
-	prs := make(map[string]v1.ResourcesResizeStatus)
-	for k, v := range s.podResizeState {
+	prs := make(map[string]v1.PodResizeStatus)
+	for k, v := range s.podResizeStatus {
 		prs[k] = v
 	}
 	return prs
@@ -94,27 +94,27 @@ func (s *stateMemory) SetPodResourceAllocation(a PodResourceAllocation) error {
 	return nil
 }
 
-func (s *stateMemory) SetPodResizeState(podUID string, resizeState v1.ResourcesResizeStatus) error {
+func (s *stateMemory) SetPodResizeStatus(podUID string, resizeStatus v1.PodResizeStatus) error {
 	s.Lock()
 	defer s.Unlock()
 
-	if resizeState != "" {
-		s.podResizeState[podUID] = resizeState
+	if resizeStatus != "" {
+		s.podResizeStatus[podUID] = resizeStatus
 	} else {
-		delete(s.podResizeState, podUID)
+		delete(s.podResizeStatus, podUID)
 	}
-	klog.V(3).InfoS("Updated pod resize state", "podUID", podUID, "resizeState", resizeState)
+	klog.V(3).InfoS("Updated pod resize state", "podUID", podUID, "resizeStatus", resizeStatus)
 	return nil
 }
 
-func (s *stateMemory) SetResizeState(rs PodResizeState) error {
+func (s *stateMemory) SetResizeStatus(rs PodResizeStatus) error {
 	s.Lock()
 	defer s.Unlock()
-	prs := make(map[string]v1.ResourcesResizeStatus)
+	prs := make(map[string]v1.PodResizeStatus)
 	for k, v := range rs {
 		prs[k] = v
 	}
-	s.podResizeState = prs
+	s.podResizeStatus = prs
 	klog.V(3).InfoS("Updated pod resize state", "resizes", rs)
 	return nil
 }
@@ -123,7 +123,7 @@ func (s *stateMemory) deleteContainer(podUID string, containerName string) {
 	delete(s.podAllocation[podUID], containerName)
 	if len(s.podAllocation[podUID]) == 0 {
 		delete(s.podAllocation, podUID)
-		delete(s.podResizeState, podUID)
+		delete(s.podResizeStatus, podUID)
 	}
 	klog.V(3).InfoS("Deleted pod resource allocation", "podUID", podUID, "containerName", containerName)
 }
@@ -133,7 +133,7 @@ func (s *stateMemory) Delete(podUID string, containerName string) error {
 	defer s.Unlock()
 	if len(containerName) == 0 {
 		delete(s.podAllocation, podUID)
-		delete(s.podResizeState, podUID)
+		delete(s.podResizeStatus, podUID)
 		klog.V(3).InfoS("Deleted pod resource allocation and resize state", "podUID", podUID)
 		return nil
 	}
@@ -146,7 +146,7 @@ func (s *stateMemory) ClearState() error {
 	defer s.Unlock()
 
 	s.podAllocation = make(PodResourceAllocation)
-	s.podResizeState = make(PodResizeState)
+	s.podResizeStatus = make(PodResizeStatus)
 	klog.V(3).InfoS("Cleared state")
 	return nil
 }

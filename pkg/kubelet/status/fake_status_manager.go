@@ -80,8 +80,8 @@ func (m *fakeManager) SetPodAllocation(pod *v1.Pod) error {
 	return nil
 }
 
-func (m *fakeManager) SetPodResizeState(podUID types.UID, resizeState v1.ResourcesResizeStatus) error {
-	klog.InfoS("SetPodResizeState()")
+func (m *fakeManager) SetPodResizeStatus(podUID types.UID, resizeStatus v1.PodResizeStatus) error {
+	klog.InfoS("SetPodResizeStatus()")
 	return nil
 }
 
