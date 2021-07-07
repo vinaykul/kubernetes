@@ -963,7 +963,11 @@ func (in *ContainerStatus) DeepCopyInto(out *ContainerStatus) {
 			(*out)[key] = val.DeepCopy()
 		}
 	}
-	in.Resources.DeepCopyInto(&out.Resources)
+	if in.Resources != nil {
+		in, out := &in.Resources, &out.Resources
+		*out = new(ResourceRequirements)
+		(*in).DeepCopyInto(*out)
+	}
 	return
 }
 

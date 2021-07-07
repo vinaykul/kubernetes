@@ -386,20 +386,26 @@ func SetObjectDefaults_Pod(in *v1.Pod) {
 	for i := range in.Status.InitContainerStatuses {
 		a := &in.Status.InitContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 	for i := range in.Status.ContainerStatuses {
 		a := &in.Status.ContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 	for i := range in.Status.EphemeralContainerStatuses {
 		a := &in.Status.EphemeralContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 }
 
@@ -414,20 +420,26 @@ func SetObjectDefaults_PodStatusResult(in *v1.PodStatusResult) {
 	for i := range in.Status.InitContainerStatuses {
 		a := &in.Status.InitContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 	for i := range in.Status.ContainerStatuses {
 		a := &in.Status.ContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 	for i := range in.Status.EphemeralContainerStatuses {
 		a := &in.Status.EphemeralContainerStatuses[i]
 		SetDefaults_ResourceList(&a.ResourcesAllocated)
-		SetDefaults_ResourceList(&a.Resources.Limits)
-		SetDefaults_ResourceList(&a.Resources.Requests)
+		if a.Resources != nil {
+			SetDefaults_ResourceList(&a.Resources.Limits)
+			SetDefaults_ResourceList(&a.Resources.Requests)
+		}
 	}
 }
 

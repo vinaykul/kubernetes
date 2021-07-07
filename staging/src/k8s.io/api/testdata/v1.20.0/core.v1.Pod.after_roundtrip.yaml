@@ -991,7 +991,6 @@ status:
         reason: "465"
     name: "459"
     ready: false
-    resources: {}
     restartCount: 11413046
     started: false
     state:
@@ -1028,7 +1027,6 @@ status:
         reason: "479"
     name: "473"
     ready: true
-    resources: {}
     restartCount: -1819153912
     started: true
     state:
@@ -1066,7 +1064,6 @@ status:
         reason: "451"
     name: "445"
     ready: true
-    resources: {}
     restartCount: 942583351
     started: false
     state:

@@ -3685,7 +3685,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: resources
       type:
         namedType: io.k8s.api.core.v1.ResourceRequirements
-      default: {}
     - name: resourcesAllocated
       type:
         map:

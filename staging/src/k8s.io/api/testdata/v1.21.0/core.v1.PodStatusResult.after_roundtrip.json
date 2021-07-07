@@ -106,10 +106,7 @@
         "image": "38",
         "imageID": "39",
         "containerID": "40",
-        "started": false,
-        "resources": {
-          
-        }
+        "started": false
       }
     ],
     "containerStatuses": [
@@ -156,10 +153,7 @@
         "image": "52",
         "imageID": "53",
         "containerID": "54",
-        "started": false,
-        "resources": {
-          
-        }
+        "started": false
       }
     ],
     "qosClass": "励鹗塢ē ",
@@ -207,10 +201,7 @@
         "image": "66",
         "imageID": "67",
         "containerID": "68",
-        "started": true,
-        "resources": {
-          
-        }
+        "started": true
       }
     ]
   }
