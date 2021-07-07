@@ -2563,7 +2563,7 @@ type ContainerStatus struct {
 	// Compute resource requests and limits enacted on the running container.
 	// +featureGate=InPlacePodVerticalScaling
 	// +optional
-	Resources ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,11,opt,name=resources"`
+	Resources *ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,11,opt,name=resources"`
 }
 
 // PodPhase is a label for the condition of a pod at the current time.

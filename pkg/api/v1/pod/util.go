@@ -260,8 +260,8 @@ func visitContainerConfigmapNames(container *v1.Container, visitor Visitor) bool
 	return true
 }
 
-// GetContainerStatus extracts the status of container "name" from "statuses".
-// It also returns if "name" exists.
+// GetContainerStatus extracts the status of container "name" from "statuses", and the index of
+// the status in "statuses" array. It returns true if "name" exists, else returns false.
 func GetContainerStatus(statuses []v1.ContainerStatus, name string) (int, v1.ContainerStatus, bool) {
 	for i := range statuses {
 		if statuses[i].Name == name {

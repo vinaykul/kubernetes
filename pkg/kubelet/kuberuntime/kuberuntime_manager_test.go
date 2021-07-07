@@ -1484,7 +1484,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 				pod.Spec.Containers[1].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
-				pod.Status.ContainerStatuses[0].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[0].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 			},
@@ -1518,10 +1518,10 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
 				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainer.ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartNotRequired}
-				pa.ContainersToUpdate[ResizeCPULimit][0].apiContainerStatus.Resources = v1.ResourceRequirements{
+				pa.ContainersToUpdate[ResizeCPULimit][0].apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
-				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainerStatus.Resources = v1.ResourceRequirements{
+				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				hash := kubecontainer.HashContainer(&pod.Spec.Containers[1])
@@ -1534,7 +1534,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 				pod.Spec.Containers[1].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
-				pod.Status.ContainerStatuses[0].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[0].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
 				}
 			},
@@ -1557,7 +1557,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
 				pa.ContainersToUpdate[ResizeCPULimit][0].apiContainer.ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartNotRequired}
-				pa.ContainersToUpdate[ResizeCPULimit][0].apiContainerStatus.Resources = v1.ResourceRequirements{
+				pa.ContainersToUpdate[ResizeCPULimit][0].apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
 				}
 				hash := kubecontainer.HashContainer(&pod.Spec.Containers[1])
@@ -1569,7 +1569,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 				pod.Spec.Containers[2].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
-				pod.Status.ContainerStatuses[2].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[2].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
 				}
 			},
@@ -1592,7 +1592,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
 				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainer.ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartNotRequired}
-				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainerStatus.Resources = v1.ResourceRequirements{
+				pa.ContainersToUpdate[ResizeMemoryLimit][0].apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
 				}
 				hash := kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1604,7 +1604,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 				pod.Spec.Containers[1].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m},
 				}
-				pod.Status.ContainerStatuses[0].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[0].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m},
 				}
 			},
@@ -1621,7 +1621,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
 				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
-				pod.Status.ContainerStatuses[2].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[2].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				podStatus.ContainerStatuses[2].Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1645,7 +1645,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
 				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
-				pod.Status.ContainerStatuses[2].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[2].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				podStatus.ContainerStatuses[2].Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1669,7 +1669,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
 				}
 				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
-				pod.Status.ContainerStatuses[2].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[2].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				podStatus.ContainerStatuses[2].Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1694,7 +1694,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
 				}
 				ci.apiContainer.ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
-				ci.apiContainerStatus.Resources = v1.ResourceRequirements{
+				ci.apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				ci.kubeContainerStatus.Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1706,7 +1706,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
 				}
 				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
-				pod.Status.ContainerStatuses[2].Resources = v1.ResourceRequirements{
+				pod.Status.ContainerStatuses[2].Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				podStatus.ContainerStatuses[2].Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1731,7 +1731,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
 				}
 				ci.apiContainer.ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
-				ci.apiContainerStatus.Resources = v1.ResourceRequirements{
+				ci.apiContainerStatus.Resources = &v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
 				}
 				ci.kubeContainerStatus.Hash = kubecontainer.HashContainer(&pod.Spec.Containers[2])
@@ -1814,7 +1814,7 @@ func TestUpdateContainerLimits(t *testing.T) {
 		for idx := range pod.Spec.Containers {
 			// default resize policy when pod resize feature is enabled
 			pod.Spec.Containers[idx].Resources = tc.apiSpecResources[idx]
-			pod.Status.ContainerStatuses[idx].Resources = tc.apiStatusResources[idx]
+			pod.Status.ContainerStatuses[idx].Resources = &tc.apiStatusResources[idx]
 			kubeStatus.ContainerStatuses[idx].Resources.Limits = tc.kubeStatusResources[idx]
 			kubeStatus.ContainerStatuses[idx].Hash = kubecontainer.HashContainer(&pod.Spec.Containers[idx])
 			cInfo := containerToUpdateInfo{

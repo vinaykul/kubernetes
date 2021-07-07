@@ -1917,6 +1917,9 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 						status.ResourcesAllocated = oldStatus.ResourcesAllocated
 					}
 				}
+				if oldStatus.Resources == nil {
+					oldStatus.Resources = &v1.ResourceRequirements{}
+				}
 				// Determine Limits
 				if container.Resources.Limits != nil {
 					limits = make(v1.ResourceList)
@@ -1937,7 +1940,7 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 						requests[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
 					}
 				}
-				status.Resources = v1.ResourceRequirements{
+				status.Resources = &v1.ResourceRequirements{
 					Limits:   limits,
 					Requests: requests,
 				}

@@ -2224,7 +2224,7 @@ func TestHandlePodResourcesResize(t *testing.T) {
 				{
 					Name:               "c1",
 					ResourcesAllocated: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
-					Resources:          v1.ResourceRequirements{},
+					Resources:          &v1.ResourceRequirements{},
 				},
 			},
 		},
