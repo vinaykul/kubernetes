@@ -795,6 +795,7 @@ func (m *kubeGenericRuntimeManager) updatePodContainerResources(pod *v1.Pod, pod
 
 	if len(updatedContainersMap) > 0 {
 		// Update pod cache runtime container status (cInfo.kubeContainerStatus) with latest values from ContainerStatus API.
+		//TODO(vinaykul): Investigate if PLEG relist/updateCache can be triggered to accomplish the below
 		newPodStatus, err := m.GetPodStatus(podStatus.ID, pod.Name, pod.Namespace)
 		if err != nil {
 			klog.ErrorS(err, "GetPodStatus failed", "pod", format.Pod(pod))

@@ -1646,10 +1646,11 @@ func (kl *Kubelet) convertStatusToAPIStatus(pod *v1.Pod, podStatus *kubecontaine
 		false,
 	)
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		//TODO(vinaykul): Move this code into a GenerateXXX function
 		specStatusDiffer := false
 		for _, c := range pod.Spec.Containers {
 			if _, cs, ok := podutil.GetContainerStatus(apiPodStatus.ContainerStatuses, c.Name); ok {
-				if diff.ObjectDiff(c.Resources, cs.Resources) != "" {
+				if cs.Resources != nil && diff.ObjectDiff(c.Resources, *cs.Resources) != "" {
 					specStatusDiffer = true
 					break
 				}
@@ -1879,6 +1880,7 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 		}
 		status := convertContainerStatus(cStatus, oldStatusPtr)
 		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+			//TODO(vinaykul): Move this code into a GenerateXXX function
 			if status.State.Running != nil {
 				var requests, limits v1.ResourceList
 				// oldStatus should always exist if container is running

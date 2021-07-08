@@ -1740,6 +1740,8 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		// Handle pod resize here instead of doing it in HandlePodUpdates because
 		// this conveniently retries any Deferred resize requests
+		// TODO(vinaykul): Investigate doing this in HandlePodUpdates + periodic SyncLoop scan
+		//     See: https://github.com/kubernetes/kubernetes/pull/102884#discussion_r663160060
 		if !kl.podIsTerminated(pod) && !kubepod.IsStaticPod(pod) {
 			kl.handlePodResourcesResize(pod)
 		}
