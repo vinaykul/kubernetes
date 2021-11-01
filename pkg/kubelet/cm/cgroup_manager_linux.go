@@ -673,7 +673,7 @@ func (m *cgroupManagerImpl) SetCgroupMemoryConfig(name CgroupName, memoryLimit i
 		return fmt.Errorf("failed to build memory cgroup fs path for cgroup %v", name)
 	}
 	memLimit := strconv.FormatInt(memoryLimit, 10)
-	if err := ioutil.WriteFile(filepath.Join(cgroupMemoryPath, "memory.limit_in_bytes"), []byte(memLimit), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(cgroupMemoryPath, "memory.limit_in_bytes"), []byte(memLimit), 0700); err != nil {
 		return fmt.Errorf("failed to write %v to %v: %v", memLimit, cgroupMemoryPath, err)
 	}
 	return nil
@@ -689,19 +689,19 @@ func (m *cgroupManagerImpl) SetCgroupCpuConfig(name CgroupName, cpuQuota *int64,
 	}
 	if cpuQuota != nil {
 		cpuQuotaStr = strconv.FormatInt(*cpuQuota, 10)
-		if err := ioutil.WriteFile(filepath.Join(cgroupCpuPath, "cpu.cfs_quota_us"), []byte(cpuQuotaStr), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(cgroupCpuPath, "cpu.cfs_quota_us"), []byte(cpuQuotaStr), 0700); err != nil {
 			return fmt.Errorf("failed to write %v to %v: %v", cpuQuotaStr, cgroupCpuPath, err)
 		}
 	}
 	if cpuPeriod != nil {
 		cpuPeriodStr = strconv.FormatUint(*cpuPeriod, 10)
-		if err := ioutil.WriteFile(filepath.Join(cgroupCpuPath, "cpu.cfs_period_us"), []byte(cpuPeriodStr), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(cgroupCpuPath, "cpu.cfs_period_us"), []byte(cpuPeriodStr), 0700); err != nil {
 			return fmt.Errorf("failed to write %v to %v: %v", cpuPeriodStr, cgroupCpuPath, err)
 		}
 	}
 	if cpuShares != nil {
 		cpuSharesStr = strconv.FormatUint(*cpuShares, 10)
-		if err := ioutil.WriteFile(filepath.Join(cgroupCpuPath, "cpu.shares"), []byte(cpuSharesStr), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(cgroupCpuPath, "cpu.shares"), []byte(cpuSharesStr), 0700); err != nil {
 			return fmt.Errorf("failed to write %v to %v: %v", cpuSharesStr, cgroupCpuPath, err)
 		}
 	}

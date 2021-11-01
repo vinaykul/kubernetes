@@ -1829,7 +1829,6 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 		}
 		status := convertContainerStatus(cStatus, oldStatusPtr)
 		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-			//TODO(vinaykul): Move this code into a GenerateXXX function
 			if status.State.Running != nil {
 				var requests, limits v1.ResourceList
 				// oldStatus should always exist if container is running
@@ -1837,11 +1836,7 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 				// Set initial limits/requests from container's spec upon transition to Running state
 				// For cpu & memory, limits queried from runtime via CRI always supercedes spec.limit
 				// For ephemeral-storage, a running container's status.limit/request equals spec.limit/request
-				determineResource := func(rName v1.ResourceName, kubeContainerStatusResource, v1ContainerResource, oldStatusResource, resource v1.ResourceList) {
-					if r, found := kubeContainerStatusResource[rName]; found {
-						resource[rName] = r.DeepCopy()
-						return
-					}
+				determineResource := func(rName v1.ResourceName, v1ContainerResource, oldStatusResource, resource v1.ResourceList) {
 					if oldStatusFound {
 						if oldStatus.State.Running == nil || status.ContainerID != oldStatus.ContainerID {
 							if r, exists := v1ContainerResource[rName]; exists {
@@ -1874,8 +1869,16 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 				// Determine Limits
 				if container.Resources.Limits != nil {
 					limits = make(v1.ResourceList)
-					determineResource(v1.ResourceCPU, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
-					determineResource(v1.ResourceMemory, cStatus.Resources.Limits, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					if cStatus.Resources != nil && cStatus.Resources.CPULimit != nil {
+						limits[v1.ResourceCPU] = cStatus.Resources.CPULimit.DeepCopy()
+					} else {
+						determineResource(v1.ResourceCPU, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					}
+					if cStatus.Resources != nil && cStatus.Resources.MemoryLimit != nil {
+						limits[v1.ResourceMemory] = cStatus.Resources.MemoryLimit.DeepCopy()
+					} else {
+						determineResource(v1.ResourceMemory, container.Resources.Limits, oldStatus.Resources.Limits, limits)
+					}
 					if ephemeralStorage, found := container.Resources.Limits[v1.ResourceEphemeralStorage]; found {
 						limits[v1.ResourceEphemeralStorage] = ephemeralStorage.DeepCopy()
 					}
@@ -1883,7 +1886,11 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 				// Determine Requests
 				if status.ResourcesAllocated != nil {
 					requests = make(v1.ResourceList)
-					determineResource(v1.ResourceCPU, cStatus.Resources.Requests, status.ResourcesAllocated, oldStatus.Resources.Requests, requests)
+					if cStatus.Resources != nil && cStatus.Resources.CPURequest != nil {
+						requests[v1.ResourceCPU] = cStatus.Resources.CPURequest.DeepCopy()
+					} else {
+						determineResource(v1.ResourceCPU, status.ResourcesAllocated, oldStatus.Resources.Requests, requests)
+					}
 					if memory, found := status.ResourcesAllocated[v1.ResourceMemory]; found {
 						requests[v1.ResourceMemory] = memory.DeepCopy()
 					}
@@ -1897,6 +1904,7 @@ func (kl *Kubelet) convertToAPIContainerStatuses(pod *v1.Pod, podStatus *kubecon
 				}
 			}
 		}
+
 		if containerSeen[cName] == 0 {
 			statuses[cName] = status
 		} else {

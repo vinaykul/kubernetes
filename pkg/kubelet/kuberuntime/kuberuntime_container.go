@@ -561,40 +561,33 @@ func (m *kubeGenericRuntimeManager) getPodContainerStatuses(uid kubetypes.UID, n
 func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName string) *kubecontainer.Status {
 	annotatedInfo := getContainerInfoFromAnnotations(status.Annotations)
 	labeledInfo := getContainerInfoFromLabels(status.Labels)
-	var resourceLimits, resourceRequests v1.ResourceList
+	var cStatusResources *kubecontainer.ContainerResources
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		//TODO(vinaykul): Instead of conversion here, store runtimeapi.ContainerStatus.Resources
-		//    in kubecontainer.Status and convert in kubelet_pods:convertToAPIContainerStatus
 		// If runtime reports cpu & memory resources info, add it to container status
-		statusResources := status.Resources.GetLinux()
-		if statusResources != nil {
+		runtimeStatusResources := status.Resources.GetLinux()
+		if runtimeStatusResources != nil {
 			var cpuLimit, memLimit, cpuRequest *resource.Quantity
-			if statusResources.CpuPeriod > 0 {
-				milliCPU := quotaToMilliCPU(statusResources.CpuQuota, statusResources.CpuPeriod)
+			if runtimeStatusResources.CpuPeriod > 0 {
+				milliCPU := quotaToMilliCPU(runtimeStatusResources.CpuQuota, runtimeStatusResources.CpuPeriod)
 				if milliCPU > 0 {
 					cpuLimit = resource.NewMilliQuantity(milliCPU, resource.DecimalSI)
 				}
 			}
-			if statusResources.CpuShares > 0 {
-				milliCPU := sharesToMilliCPU(statusResources.CpuShares)
+			if runtimeStatusResources.CpuShares > 0 {
+				milliCPU := sharesToMilliCPU(runtimeStatusResources.CpuShares)
 				if milliCPU > 0 {
 					cpuRequest = resource.NewMilliQuantity(milliCPU, resource.DecimalSI)
 				}
 			}
-			if statusResources.MemoryLimitInBytes > 0 {
-				memLimit = resource.NewQuantity(statusResources.MemoryLimitInBytes, resource.BinarySI)
+			if runtimeStatusResources.MemoryLimitInBytes > 0 {
+				memLimit = resource.NewQuantity(runtimeStatusResources.MemoryLimitInBytes, resource.BinarySI)
 			}
-			if cpuLimit != nil || memLimit != nil {
-				resourceLimits = make(v1.ResourceList)
-				if cpuLimit != nil {
-					resourceLimits[v1.ResourceCPU] = *cpuLimit
+			if cpuLimit != nil || memLimit != nil || cpuRequest != nil {
+				cStatusResources = &kubecontainer.ContainerResources{
+					CPULimit:    cpuLimit,
+					CPURequest:  cpuRequest,
+					MemoryLimit: memLimit,
 				}
-				if memLimit != nil {
-					resourceLimits[v1.ResourceMemory] = *memLimit
-				}
-			}
-			if cpuRequest != nil {
-				resourceRequests = v1.ResourceList{v1.ResourceCPU: *cpuRequest}
 			}
 		}
 	}
@@ -610,7 +603,7 @@ func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName strin
 		RestartCount: annotatedInfo.RestartCount,
 		State:        toKubeContainerState(status.State),
 		CreatedAt:    time.Unix(0, status.CreatedAt),
-		Resources:    v1.ResourceRequirements{Limits: resourceLimits, Requests: resourceRequests},
+		Resources:    cStatusResources,
 	}
 
 	if status.State != runtimeapi.ContainerState_CONTAINER_CREATED {

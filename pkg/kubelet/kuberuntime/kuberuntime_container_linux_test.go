@@ -750,12 +750,12 @@ func TestGenerateLinuxContainerResources(t *testing.T) {
 		},
 		{
 			"requests & limits, cpu & memory, guaranteed qos - container status with resourcesAllocated",
-			v1.ResourceList{v1.ResourceCPU: resource.MustParse("250m"), v1.ResourceMemory: resource.MustParse("500Mi")},
-			v1.ResourceList{v1.ResourceCPU: resource.MustParse("250m"), v1.ResourceMemory: resource.MustParse("500Mi")},
+			v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m"), v1.ResourceMemory: resource.MustParse("500Mi")},
+			v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m"), v1.ResourceMemory: resource.MustParse("500Mi")},
 			[]v1.ContainerStatus{
 				{
 					Name:               "c1",
-					ResourcesAllocated: v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m"), v1.ResourceMemory: resource.MustParse("300Mi")},
+					ResourcesAllocated: v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m"), v1.ResourceMemory: resource.MustParse("500Mi")},
 				},
 			},
 			&runtimeapi.LinuxContainerResources{CpuShares: 204, MemoryLimitInBytes: 524288000, OomScoreAdj: -997},

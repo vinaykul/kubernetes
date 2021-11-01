@@ -3720,7 +3720,10 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 			kubelet.statusManager.SetPodAllocation(tc.Pod)
 			tc.Pod.Status.ContainerStatuses[i].ResourcesAllocated = tc.Resources[i].Requests
 			if tc.Resources[i].Limits != nil {
-				tc.PodStatus.ContainerStatuses[i].Resources.Limits = tc.Resources[i].Limits
+				tc.PodStatus.ContainerStatuses[i].Resources = &kubecontainer.ContainerResources{
+					MemoryLimit: tc.Resources[i].Limits.Memory(),
+					CPULimit:    tc.Resources[i].Limits.Cpu(),
+				}
 			}
 		}
 

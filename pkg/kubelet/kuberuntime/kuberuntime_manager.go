@@ -28,6 +28,7 @@ import (
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubetypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
@@ -584,9 +585,27 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 		len(diff.ObjectDiff(container.Resources.Requests, apiContainerStatus.ResourcesAllocated)) != 0 {
 		return true
 	}
-	// If runtime status resources is available from CRI or previous update, compare with it.
-	if len(diff.ObjectDiff(container.Resources, containerStatus.Resources)) == 0 {
-		return true
+	var cpuReq, cpuLim, memReq, memLim resource.Quantity
+	if containerStatus.Resources != nil {
+		if containerStatus.Resources.CPURequest != nil {
+			cpuReq = containerStatus.Resources.CPURequest.DeepCopy()
+		}
+		if containerStatus.Resources.CPULimit != nil {
+			cpuLim = containerStatus.Resources.CPULimit.DeepCopy()
+		}
+		if containerStatus.Resources.MemoryRequest != nil {
+			memReq = containerStatus.Resources.MemoryRequest.DeepCopy()
+		}
+		if containerStatus.Resources.MemoryLimit != nil {
+			memLim = containerStatus.Resources.MemoryLimit.DeepCopy()
+		}
+		// If runtime status resources is available from CRI, compare with it.
+		if container.Resources.Limits.Cpu().MilliValue() == cpuLim.MilliValue() &&
+			container.Resources.Requests.Cpu().MilliValue() == cpuReq.MilliValue() &&
+			container.Resources.Limits.Memory().Value() == memLim.Value() &&
+			container.Resources.Requests.Memory().Value() == memReq.Value() {
+			return true
+		}
 	}
 	resizePolicy := make(map[v1.ResourceName]v1.ResourceResizePolicy)
 	for _, pol := range container.ResizePolicy {
@@ -622,11 +641,25 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 	currentLimits := apiContainerStatus.Resources.Limits
 	currentRequests := apiContainerStatus.Resources.Requests
 	// Runtime container status resources, if set, takes precedence.
-	if containerStatus.Resources.Limits != nil {
-		currentLimits = containerStatus.Resources.Limits
-	}
-	if containerStatus.Resources.Requests != nil {
-		currentRequests = containerStatus.Resources.Requests
+	if containerStatus.Resources != nil {
+		if containerStatus.Resources.MemoryLimit != nil || containerStatus.Resources.CPULimit != nil {
+			currentLimits = make(v1.ResourceList)
+			if containerStatus.Resources.MemoryLimit != nil {
+				currentLimits[v1.ResourceMemory] = *containerStatus.Resources.MemoryLimit
+			}
+			if containerStatus.Resources.CPULimit != nil {
+				currentLimits[v1.ResourceCPU] = *containerStatus.Resources.CPULimit
+			}
+		}
+		if containerStatus.Resources.MemoryRequest != nil || containerStatus.Resources.CPURequest != nil {
+			currentRequests = make(v1.ResourceList)
+			if containerStatus.Resources.MemoryRequest != nil {
+				currentRequests[v1.ResourceMemory] = *containerStatus.Resources.MemoryRequest
+			}
+			if containerStatus.Resources.CPURequest != nil {
+				currentRequests[v1.ResourceCPU] = *containerStatus.Resources.CPURequest
+			}
+		}
 	}
 	resizeCPULim, restartCPULim := determineContainerResize(v1.ResourceCPU, desiredLimits.Cpu().MilliValue(), currentLimits.Cpu().MilliValue())
 	resizeCPUReq, restartCPUReq := determineContainerResize(v1.ResourceCPU, desiredRequests.Cpu().MilliValue(), currentRequests.Cpu().MilliValue())
@@ -752,50 +785,60 @@ func (m *kubeGenericRuntimeManager) doPodResizeAction(pod *v1.Pod, podStatus *ku
 
 func (m *kubeGenericRuntimeManager) updatePodContainerResources(pod *v1.Pod, podStatus *kubecontainer.PodStatus, resourceKind ResizeResourceKind, containersToUpdate []containerToUpdateInfo) error {
 	updatedContainersMap := make(map[kubecontainer.ContainerID]*kubecontainer.Status)
+	klog.V(5).InfoS("Updating container resources", "pod", klog.KObj(pod))
 
 	for _, cInfo := range containersToUpdate {
 		container := cInfo.apiContainer.DeepCopy()
 		containerStatus := cInfo.apiContainerStatus.DeepCopy()
-		desiredLimits := container.Resources.Limits
-		desiredRequests := containerStatus.ResourcesAllocated
-		currentLimits := containerStatus.Resources.Limits
-		currentRequests := containerStatus.Resources.Requests
+		desiredMemoryLimit := container.Resources.Limits.Memory()
+		desiredCpuLimit := container.Resources.Limits.Cpu()
+		desiredCpuRequest := containerStatus.ResourcesAllocated.Cpu()
+		currentMemoryLimit := containerStatus.Resources.Limits.Memory()
+		currentMemoryRequest := containerStatus.Resources.Requests.Memory()
+		currentCpuLimit := containerStatus.Resources.Limits.Cpu()
+		currentCpuRequest := containerStatus.Resources.Requests.Cpu()
 		// Runtime container status resources, if set, takes precedence.
-		// TODO(vinaykul): Store runtime.Container.Resources in kubeContainerStatus
-		//    instead of v1.Resources, translate for below update operations
-		if cInfo.kubeContainerStatus.Resources.Limits != nil {
-			currentLimits = cInfo.kubeContainerStatus.Resources.Limits.DeepCopy()
-		}
-		if cInfo.kubeContainerStatus.Resources.Requests != nil {
-			currentRequests = cInfo.kubeContainerStatus.Resources.Requests.DeepCopy()
+		if cInfo.kubeContainerStatus.Resources != nil {
+			if cInfo.kubeContainerStatus.Resources.MemoryLimit != nil {
+				currentMemoryLimit = cInfo.kubeContainerStatus.Resources.MemoryLimit
+			}
+			if cInfo.kubeContainerStatus.Resources.MemoryRequest != nil {
+				currentMemoryRequest = cInfo.kubeContainerStatus.Resources.MemoryRequest
+			}
+			if cInfo.kubeContainerStatus.Resources.CPULimit != nil {
+				currentCpuLimit = cInfo.kubeContainerStatus.Resources.CPULimit
+			}
+			if cInfo.kubeContainerStatus.Resources.CPURequest != nil {
+				currentCpuRequest = cInfo.kubeContainerStatus.Resources.CPURequest
+			}
 		}
 		switch resourceKind {
 		case ResizeCPULimit:
 			container.Resources.Limits = v1.ResourceList{
-				v1.ResourceCPU:    *desiredLimits.Cpu(),
-				v1.ResourceMemory: *currentLimits.Memory(),
+				v1.ResourceCPU:    *desiredCpuLimit,
+				v1.ResourceMemory: *currentMemoryLimit,
 			}
-			containerStatus.ResourcesAllocated = v1.ResourceList{
-				v1.ResourceCPU:    *currentRequests.Cpu(),
-				v1.ResourceMemory: *currentRequests.Memory(),
+			container.Resources.Requests = v1.ResourceList{
+				v1.ResourceCPU:    *currentCpuRequest,
+				v1.ResourceMemory: *currentMemoryRequest,
 			}
 		case ResizeCPURequest:
 			container.Resources.Limits = v1.ResourceList{
-				v1.ResourceCPU:    *currentLimits.Cpu(),
-				v1.ResourceMemory: *currentLimits.Memory(),
+				v1.ResourceCPU:    *currentCpuLimit,
+				v1.ResourceMemory: *currentMemoryLimit,
 			}
-			containerStatus.ResourcesAllocated = v1.ResourceList{
-				v1.ResourceCPU:    *desiredRequests.Cpu(),
-				v1.ResourceMemory: *currentRequests.Memory(),
+			container.Resources.Requests = v1.ResourceList{
+				v1.ResourceCPU:    *desiredCpuRequest,
+				v1.ResourceMemory: *currentMemoryRequest,
 			}
 		case ResizeMemoryLimit:
 			container.Resources.Limits = v1.ResourceList{
-				v1.ResourceCPU:    *currentLimits.Cpu(),
-				v1.ResourceMemory: *desiredLimits.Memory(),
+				v1.ResourceCPU:    *currentCpuLimit,
+				v1.ResourceMemory: *desiredMemoryLimit,
 			}
-			containerStatus.ResourcesAllocated = v1.ResourceList{
-				v1.ResourceCPU:    *currentRequests.Cpu(),
-				v1.ResourceMemory: *currentRequests.Memory(),
+			container.Resources.Requests = v1.ResourceList{
+				v1.ResourceCPU:    *currentCpuRequest,
+				v1.ResourceMemory: *currentMemoryRequest,
 			}
 		}
 		if err := m.updateContainerResources(pod, container, cInfo.kubeContainerStatus.ID); err != nil {
@@ -817,20 +860,24 @@ func (m *kubeGenericRuntimeManager) updatePodContainerResources(pod *v1.Pod, pod
 			return err
 		}
 		for _, newContainerStatus := range newPodStatus.ContainerStatuses {
-			if c, found := updatedContainersMap[newContainerStatus.ID]; found {
-				if newContainerStatus.Resources.Limits == nil && newContainerStatus.Resources.Requests == nil {
-					klog.ErrorS(err, "runtime failed to report resources", "pod", format.Pod(pod))
-					return fmt.Errorf("runtime failed to report resources for pod %s", pod.Name)
+			if newContainerStatus.Resources == nil {
+				continue
+			}
+			containerStatus := podStatus.FindContainerStatusByName(newContainerStatus.Name)
+			if containerStatus != nil {
+				if newContainerStatus.Resources.MemoryLimit != nil {
+					containerStatus.Resources.MemoryLimit = newContainerStatus.Resources.MemoryLimit
 				}
-				if newContainerStatus.Resources.Limits != nil {
-					c.Resources.Limits = newContainerStatus.Resources.Limits.DeepCopy()
+				if newContainerStatus.Resources.CPULimit != nil {
+					containerStatus.Resources.CPULimit = newContainerStatus.Resources.CPULimit
 				}
-				if newContainerStatus.Resources.Requests != nil {
-					c.Resources.Requests = newContainerStatus.Resources.Requests.DeepCopy()
+				if newContainerStatus.Resources.CPURequest != nil {
+					containerStatus.Resources.CPURequest = newContainerStatus.Resources.CPURequest
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -1233,9 +1280,10 @@ func (m *kubeGenericRuntimeManager) SyncPod(pod *v1.Pod, podStatus *kubecontaine
 	}
 
 	// Step 7: For containers in podContainerChanges.ContainersToUpdate[CPU,Memory] list, invoke UpdateContainerResources
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) &&
-		(len(podContainerChanges.ContainersToUpdate) > 0 || podContainerChanges.UpdatePodResources) {
-		m.doPodResizeAction(pod, podStatus, podContainerChanges, result)
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		if len(podContainerChanges.ContainersToUpdate) > 0 || podContainerChanges.UpdatePodResources {
+			m.doPodResizeAction(pod, podStatus, podContainerChanges, result)
+		}
 	}
 
 	// Step 8: start containers in podContainerChanges.ContainersToStart.

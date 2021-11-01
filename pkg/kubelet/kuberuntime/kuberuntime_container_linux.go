@@ -30,7 +30,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/klog/v2"
-	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
@@ -69,14 +68,7 @@ func (m *kubeGenericRuntimeManager) generateLinuxContainerConfig(container *v1.C
 // generateLinuxContainerResources generates linux container resources config for runtime
 func (m *kubeGenericRuntimeManager) generateLinuxContainerResources(pod *v1.Pod, container *v1.Container, enforceMemoryQoS bool) *runtimeapi.LinuxContainerResources {
 	// set linux container resources
-	cpuRequest := container.Resources.Requests.Cpu()
-	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.InPlacePodVerticalScaling) {
-		_, containerStatus, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name)
-		if found && containerStatus.ResourcesAllocated != nil {
-			cpuRequest = containerStatus.ResourcesAllocated.Cpu()
-		}
-	}
-	lcr := m.calculateLinuxResources(cpuRequest, container.Resources.Limits.Cpu(), container.Resources.Limits.Memory())
+	lcr := m.calculateLinuxResources(container.Resources.Requests.Cpu(), container.Resources.Limits.Cpu(), container.Resources.Limits.Memory())
 
 	lcr.OomScoreAdj = int64(qos.GetContainerOOMScoreAdjust(pod, container,
 		int64(m.machineInfo.MemoryCapacity)))

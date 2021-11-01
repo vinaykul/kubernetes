@@ -245,11 +245,9 @@ func TestToKubeContainerStatus(t *testing.T) {
 				State:     kubecontainer.ContainerStateRunning,
 				CreatedAt: time.Unix(0, createdAt),
 				StartedAt: time.Unix(0, startedAt),
-				Resources: v1.ResourceRequirements{
-					Limits: v1.ResourceList{
-						v1.ResourceCPU:    *resource.NewMilliQuantity(250, resource.DecimalSI),
-						v1.ResourceMemory: *resource.NewQuantity(524288000, resource.BinarySI),
-					},
+				Resources: &kubecontainer.ContainerResources{
+					CPULimit:    resource.NewMilliQuantity(250, resource.DecimalSI),
+					MemoryLimit: resource.NewQuantity(524288000, resource.BinarySI),
 				},
 			},
 		},
@@ -274,7 +272,9 @@ func TestToKubeContainerStatus(t *testing.T) {
 				State:     kubecontainer.ContainerStateRunning,
 				CreatedAt: time.Unix(0, createdAt),
 				StartedAt: time.Unix(0, startedAt),
-				Resources: v1.ResourceRequirements{Limits: v1.ResourceList{v1.ResourceCPU: *resource.NewMilliQuantity(500, resource.DecimalSI)}},
+				Resources: &kubecontainer.ContainerResources{
+					CPULimit: resource.NewMilliQuantity(500, resource.DecimalSI),
+				},
 			},
 		},
 		"container reporting memory only": {
@@ -298,7 +298,9 @@ func TestToKubeContainerStatus(t *testing.T) {
 				State:     kubecontainer.ContainerStateRunning,
 				CreatedAt: time.Unix(0, createdAt),
 				StartedAt: time.Unix(0, startedAt),
-				Resources: v1.ResourceRequirements{Limits: v1.ResourceList{v1.ResourceMemory: *resource.NewQuantity(524288000, resource.BinarySI)}},
+				Resources: &kubecontainer.ContainerResources{
+					MemoryLimit: resource.NewQuantity(524288000, resource.BinarySI),
+				},
 			},
 		},
 	} {
