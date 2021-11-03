@@ -155,6 +155,9 @@ func (p *podEvaluator) Handles(a admission.Attributes) bool {
 	if op == admission.Create {
 		return true
 	}
+	if feature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && op == admission.Update {
+		return true
+	}
 	return false
 }
 
