@@ -545,6 +545,14 @@ func dropDisabledFields(
 	dropDisabledTopologySpreadConstraintsFields(podSpec, oldPodSpec)
 	dropDisabledNodeInclusionPolicyFields(podSpec, oldPodSpec)
 	dropDisabledMatchLabelKeysField(podSpec, oldPodSpec)
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && !inPlacePodVerticalScalingInUse(oldPodSpec) {
+		// Drop ResizePolicy fields. Don't drop updates to Resources field as template.spec.resources
+		// field is mutable for certain controllers. Let ValidatePodUpdate handle it.
+		for i := range podSpec.Containers {
+			podSpec.Containers[i].ResizePolicy = nil
+		}
+	}
 }
 
 // dropDisabledTopologySpreadConstraintsFields removes disabled fields from PodSpec related
@@ -668,6 +676,22 @@ func hostUsersInUse(podSpec *api.PodSpec) bool {
 	}
 
 	return false
+}
+
+// inPlacePodVerticalScalingInUse returns true if pod spec is non-nil and ResizePolicy is set
+func inPlacePodVerticalScalingInUse(podSpec *api.PodSpec) bool {
+	if podSpec == nil {
+		return false
+	}
+	var inUse bool
+	VisitContainers(podSpec, Containers, func(c *api.Container, containerType ContainerType) bool {
+		if len(c.ResizePolicy) > 0 {
+			inUse = true
+			return false
+		}
+		return true
+	})
+	return inUse
 }
 
 // procMountInUse returns true if the pod spec is non-nil and has a SecurityContext's ProcMount field set to a non-default value

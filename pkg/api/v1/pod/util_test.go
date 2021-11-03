@@ -809,6 +809,25 @@ func TestGetContainerStatus(t *testing.T) {
 	}
 }
 
+func TestGetIndexOfContainerStatus(t *testing.T) {
+	testStatus := []v1.ContainerStatus{
+		{
+			Name:  "c1",
+			Ready: false,
+			Image: "image1",
+		},
+		{
+			Name:  "c2",
+			Ready: true,
+			Image: "image1",
+		},
+	}
+
+	assert.Equal(t, 0, GetIndexOfContainerStatus(testStatus, "c1"), "first container")
+	assert.Equal(t, 1, GetIndexOfContainerStatus(testStatus, "c2"), "second container")
+	assert.Equal(t, -1, GetIndexOfContainerStatus(testStatus, "c3"), "non-existent container")
+}
+
 func TestUpdatePodCondition(t *testing.T) {
 	time := metav1.Now()
 
