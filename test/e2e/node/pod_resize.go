@@ -29,8 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/diff"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/component-base/featuregate"
 	kubecm "k8s.io/kubernetes/pkg/kubelet/cm"
 
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -42,8 +40,6 @@ import (
 )
 
 const (
-	InPlacePodVerticalScalingFeature featuregate.Feature = "InPlacePodVerticalScaling"
-
 	CgroupCPUPeriod string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 	CgroupCPUShares string = "/sys/fs/cgroup/cpu/cpu.shares"
 	CgroupCPUQuota  string = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
@@ -275,10 +271,6 @@ func doPodResizeTest() {
 	f := framework.NewDefaultFramework("pod-resize")
 	var podClient *framework.PodClient
 	var ns string
-
-	if !utilfeature.DefaultFeatureGate.Enabled(InPlacePodVerticalScalingFeature) {
-		return
-	}
 
 	ginkgo.BeforeEach(func() {
 		podClient = f.PodClient()
@@ -1079,6 +1071,6 @@ func doPodResizeTest() {
 	}
 }
 
-var _ = ginkgo.Describe("[sig-node] PodInPlaceResizeContainer", func() {
+var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalScaling] [Slow]", func() {
 	doPodResizeTest()
 })
