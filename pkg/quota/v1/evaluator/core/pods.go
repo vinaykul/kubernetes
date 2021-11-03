@@ -30,10 +30,12 @@ import (
 	"k8s.io/apiserver/pkg/admission"
 	quota "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/apiserver/pkg/quota/v1/generic"
+	"k8s.io/apiserver/pkg/util/feature"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	k8s_api_v1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/clock"
 )
 
@@ -153,6 +155,9 @@ func (p *podEvaluator) GroupResource() schema.GroupResource {
 func (p *podEvaluator) Handles(a admission.Attributes) bool {
 	op := a.GetOperation()
 	if op == admission.Create {
+		return true
+	}
+	if feature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && op == admission.Update {
 		return true
 	}
 	return false

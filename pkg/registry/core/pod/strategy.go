@@ -33,17 +33,20 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/diff"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/registry/generic"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/pod"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/helper/qos"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/client"
 	proxyutil "k8s.io/kubernetes/pkg/proxy/util"
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
@@ -94,6 +97,35 @@ func (podStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object
 	newPod := obj.(*api.Pod)
 	oldPod := old.(*api.Pod)
 	newPod.Status = oldPod.Status
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		// With support for in-place pod resizing, container resources are now mutable.
+		// If container resources are updated with new resource requests values, a pod resize is
+		// desired. The status of this request is reflected by setting Resize field to "Proposed"
+		// as a signal to the caller that the request is being considered.
+		for i, c := range newPod.Spec.Containers {
+			if c.Resources.Requests == nil {
+				continue
+			}
+			if diff.ObjectDiff(oldPod.Spec.Containers[i].Resources, c.Resources) == "" {
+				continue
+			}
+			findContainerStatus := func(css []api.ContainerStatus, cName string) (api.ContainerStatus, bool) {
+				for i := range css {
+					if css[i].Name == cName {
+						return css[i], true
+					}
+				}
+				return api.ContainerStatus{}, false
+			}
+			if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
+				if diff.ObjectDiff(c.Resources.Requests, cs.ResourcesAllocated) != "" {
+					newPod.Status.Resize = api.PodResizeStatusProposed
+					break
+				}
+			}
+		}
+	}
 
 	podutil.DropDisabledPodFields(newPod, oldPod)
 }
