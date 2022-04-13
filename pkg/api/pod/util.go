@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/diff"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
@@ -484,19 +485,24 @@ func DropDisabledTemplateFields(podTemplate, oldPodTemplate *api.PodTemplateSpec
 func DropDisabledPodFields(pod, oldPod *api.Pod) {
 	var (
 		podSpec           *api.PodSpec
+		podStatus         *api.PodStatus
 		podAnnotations    map[string]string
 		oldPodSpec        *api.PodSpec
+		oldPodStatus      *api.PodStatus
 		oldPodAnnotations map[string]string
 	)
 	if pod != nil {
 		podSpec = &pod.Spec
+		podStatus = &pod.Status
 		podAnnotations = pod.Annotations
 	}
 	if oldPod != nil {
 		oldPodSpec = &oldPod.Spec
+		oldPodStatus = &oldPod.Status
 		oldPodAnnotations = oldPod.Annotations
 	}
 	dropDisabledFields(podSpec, podAnnotations, oldPodSpec, oldPodAnnotations)
+	dropDisabledPodStatusFields(podStatus, oldPodStatus, podSpec, oldPodSpec)
 }
 
 // dropDisabledFields removes disabled fields from the pod metadata and spec.
@@ -552,6 +558,34 @@ func dropDisabledFields(
 		for i := range podSpec.Containers {
 			podSpec.Containers[i].ResizePolicy = nil
 		}
+		for i := range podSpec.InitContainers {
+			podSpec.InitContainers[i].ResizePolicy = nil
+		}
+		for i := range podSpec.EphemeralContainers {
+			podSpec.EphemeralContainers[i].ResizePolicy = nil
+		}
+	}
+}
+
+// dropDisabledPodStatusFields removes disabled fields from the pod status
+func dropDisabledPodStatusFields(podStatus, oldPodStatus *api.PodStatus, podSpec, oldPodSpec *api.PodSpec) {
+	// the new status is always be non-nil
+	if podStatus == nil {
+		podStatus = &api.PodStatus{}
+	}
+
+	if !utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && !inPlacePodVerticalScalingInUse(oldPodSpec) {
+		// Drop Resize, ResourcesAllocated, and Resources fields
+		dropResourcesFields := func(csl []api.ContainerStatus) {
+			for i := range csl {
+				csl[i].ResourcesAllocated = nil
+				csl[i].Resources = nil
+			}
+		}
+		dropResourcesFields(podStatus.ContainerStatuses)
+		dropResourcesFields(podStatus.InitContainerStatuses)
+		dropResourcesFields(podStatus.EphemeralContainerStatuses)
+		podStatus.Resize = ""
 	}
 }
 
@@ -794,4 +828,29 @@ func setsWindowsHostProcess(podSpec *api.PodSpec) bool {
 	})
 
 	return inUse
+}
+
+func MarkPodProposedForResize(oldPod, newPod *api.Pod) {
+	for i, c := range newPod.Spec.Containers {
+		if c.Resources.Requests == nil {
+			continue
+		}
+		if diff.ObjectDiff(oldPod.Spec.Containers[i].Resources, c.Resources) == "" {
+			continue
+		}
+		findContainerStatus := func(css []api.ContainerStatus, cName string) (api.ContainerStatus, bool) {
+			for i := range css {
+				if css[i].Name == cName {
+					return css[i], true
+				}
+			}
+			return api.ContainerStatus{}, false
+		}
+		if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
+			if diff.ObjectDiff(c.Resources.Requests, cs.ResourcesAllocated) != "" {
+				newPod.Status.Resize = api.PodResizeStatusProposed
+				break
+			}
+		}
+	}
 }

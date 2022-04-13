@@ -33,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/diff"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/registry/generic"
@@ -103,28 +102,7 @@ func (podStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object
 		// If container resources are updated with new resource requests values, a pod resize is
 		// desired. The status of this request is reflected by setting Resize field to "Proposed"
 		// as a signal to the caller that the request is being considered.
-		for i, c := range newPod.Spec.Containers {
-			if c.Resources.Requests == nil {
-				continue
-			}
-			if diff.ObjectDiff(oldPod.Spec.Containers[i].Resources, c.Resources) == "" {
-				continue
-			}
-			findContainerStatus := func(css []api.ContainerStatus, cName string) (api.ContainerStatus, bool) {
-				for i := range css {
-					if css[i].Name == cName {
-						return css[i], true
-					}
-				}
-				return api.ContainerStatus{}, false
-			}
-			if cs, ok := findContainerStatus(newPod.Status.ContainerStatuses, c.Name); ok {
-				if diff.ObjectDiff(c.Resources.Requests, cs.ResourcesAllocated) != "" {
-					newPod.Status.Resize = api.PodResizeStatusProposed
-					break
-				}
-			}
-		}
+		podutil.MarkPodProposedForResize(oldPod, newPod)
 	}
 
 	podutil.DropDisabledPodFields(newPod, oldPod)

@@ -275,14 +275,14 @@ func GetExistingContainerStatus(statuses []v1.ContainerStatus, name string) v1.C
 }
 
 // GetIndexOfContainerStatus gets the index of status of container "name" from "statuses",
-// returns -1 if container is not found.
-func GetIndexOfContainerStatus(statuses []v1.ContainerStatus, name string) int {
+// It returns (index, true) if "name" exists, else returns (0, false).
+func GetIndexOfContainerStatus(statuses []v1.ContainerStatus, name string) (int, bool) {
 	for i := range statuses {
 		if statuses[i].Name == name {
-			return i
+			return i, true
 		}
 	}
-	return -1
+	return 0, false
 }
 
 // IsPodAvailable returns true if a pod is available; false otherwise.

@@ -823,9 +823,37 @@ func TestGetIndexOfContainerStatus(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, 0, GetIndexOfContainerStatus(testStatus, "c1"), "first container")
-	assert.Equal(t, 1, GetIndexOfContainerStatus(testStatus, "c2"), "second container")
-	assert.Equal(t, -1, GetIndexOfContainerStatus(testStatus, "c3"), "non-existent container")
+	tests := []struct {
+		desc           string
+		containerName  string
+		expectedExists bool
+		expectedIndex  int
+	}{
+		{
+			desc:           "first container",
+			containerName:  "c1",
+			expectedExists: true,
+			expectedIndex:  0,
+		},
+		{
+			desc:           "second container",
+			containerName:  "c2",
+			expectedExists: true,
+			expectedIndex:  1,
+		},
+		{
+			desc:           "non-existent container",
+			containerName:  "c3",
+			expectedExists: false,
+			expectedIndex:  0,
+		},
+	}
+
+	for _, test := range tests {
+		idx, exists := GetIndexOfContainerStatus(testStatus, test.containerName)
+		assert.Equal(t, test.expectedExists, exists, "GetIndexOfContainerStatus: "+test.desc)
+		assert.Equal(t, test.expectedIndex, idx, "GetIndexOfContainerStatus: "+test.desc)
+	}
 }
 
 func TestUpdatePodCondition(t *testing.T) {
