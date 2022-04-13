@@ -4328,7 +4328,7 @@ var updatablePodSpecFields = []string{
 	"`spec.containers[*].resources` (for CPU/memory only)",
 }
 
-// TODO(vinaykul): Drop this var once InPlacePodVerticalScaling goes GA and featuregate is gone.
+// TODO(vinaykul,InPlacePodVerticalScaling): Drop this var once InPlacePodVerticalScaling goes GA and featuregate is gone.
 var updatablePodSpecFieldsNoResources = []string{
 	"`spec.containers[*].image`",
 	"`spec.initContainers[*].image`",
@@ -4393,7 +4393,7 @@ func ValidatePodUpdate(newPod, oldPod *core.Pod, opts PodValidationOptions) fiel
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		//TODO(vinaykul): Investigate if we can use PodStatus.QOSClass in kubelet and elsewhere
+		//TODO(vinaykul,InPlacePodVerticalScaling): Investigate if PodStatus.QOSClass in kubelet, elsewhere.
 		//    Once we can rely on Status persistence, drop this block. QOSClass does not change
 		//    once it is bootstrapped on podCreate. This needs to be addressed before beta.
 		//    Ref: https://github.com/kubernetes/kubernetes/pull/102884/#discussion_r663280487
