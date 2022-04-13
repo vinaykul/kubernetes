@@ -7222,6 +7222,24 @@ func TestValidateEphemeralContainers(t *testing.T) {
 			},
 			field.ErrorList{{Type: field.ErrorTypeForbidden, Field: "ephemeralContainers[0].lifecycle"}},
 		},
+		{
+			"Container uses disallowed field: ResizePolicy",
+			line(),
+			[]core.EphemeralContainer{
+				{
+					EphemeralContainerCommon: core.EphemeralContainerCommon{
+						Name:                     "resources-resize-policy",
+						Image:                    "image",
+						ImagePullPolicy:          "IfNotPresent",
+						TerminationMessagePolicy: "File",
+						ResizePolicy: []core.ContainerResizePolicy{
+							{ResourceName: "cpu", Policy: "RestartNotRequired"},
+						},
+					},
+				},
+			},
+			field.ErrorList{{Type: field.ErrorTypeForbidden, Field: "ephemeralContainers[0].resizePolicy"}},
+		},
 	}
 
 	for _, tc := range tcs {
@@ -7434,6 +7452,16 @@ func TestValidateContainers(t *testing.T) {
 					core.ResourceName(core.ResourceCPU):    resource.MustParse("9.5"),
 					core.ResourceName(core.ResourceMemory): resource.MustParse("10G"),
 				},
+			},
+			ImagePullPolicy:          "IfNotPresent",
+			TerminationMessagePolicy: "File",
+		},
+		{
+			Name:  "resources-resize-policy",
+			Image: "image",
+			ResizePolicy: []core.ContainerResizePolicy{
+				{ResourceName: "cpu", Policy: "RestartNotRequired"},
+				{ResourceName: "memory", Policy: "RestartRequired"},
 			},
 			ImagePullPolicy:          "IfNotPresent",
 			TerminationMessagePolicy: "File",
@@ -9197,6 +9225,32 @@ func TestValidatePodSpec(t *testing.T) {
 			Containers: []core.Container{{Name: "ctr", Image: "image", ImagePullPolicy: "IfNotPresent", TerminationMessagePolicy: "File"}},
 			SecurityContext: &core.PodSecurityContext{
 				FSGroupChangePolicy: &badfsGroupChangePolicy1,
+			},
+			RestartPolicy: core.RestartPolicyAlways,
+			DNSPolicy:     core.DNSClusterFirst,
+		},
+		"disallowed resources resize policy for init containers": {
+			InitContainers: []core.Container{
+				{
+					Name:  "initctr",
+					Image: "initimage",
+					ResizePolicy: []core.ContainerResizePolicy{
+						{ResourceName: "cpu", Policy: "RestartNotRequired"},
+					},
+					ImagePullPolicy:          "IfNotPresent",
+					TerminationMessagePolicy: "File",
+				},
+			},
+			Containers: []core.Container{
+				{
+					Name:  "ctr",
+					Image: "image",
+					ResizePolicy: []core.ContainerResizePolicy{
+						{ResourceName: "cpu", Policy: "RestartNotRequired"},
+					},
+					ImagePullPolicy:          "IfNotPresent",
+					TerminationMessagePolicy: "File",
+				},
 			},
 			RestartPolicy: core.RestartPolicyAlways,
 			DNSPolicy:     core.DNSClusterFirst,
