@@ -912,10 +912,19 @@ func (m *kubeGenericRuntimeManager) computePodActions(pod *v1.Pod, podStatus *ku
 		var reason containerKillReason
 		restart := shouldRestartOnFailure(pod)
 		if _, _, changed := containerChanged(&container, containerStatus); changed {
-			message = fmt.Sprintf("Container %s definition changed", container.Name)
-			// Restart regardless of the restart policy because the container
-			// spec changed.
-			restart = true
+			if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) &&
+				kubecontainer.HashContainerWithoutResources(&container) == containerStatus.HashWithoutResources {
+				// Only the Resources field has changed. Check for in-place pod resize action.
+				if keep := m.computePodResizeAction(pod, idx, containerStatus, &changes); keep {
+					keepCount++
+				}
+				continue
+			} else {
+				message = fmt.Sprintf("Container %s definition changed", container.Name)
+				// Restart regardless of the restart policy because the container
+				// spec changed.
+				restart = true
+			}
 		} else if liveness, found := m.livenessManager.Get(containerStatus.ID); found && liveness == proberesults.Failure {
 			// If the container failed the liveness probe, we should kill it.
 			message = fmt.Sprintf("Container %s failed liveness probe", container.Name)
@@ -924,11 +933,6 @@ func (m *kubeGenericRuntimeManager) computePodActions(pod *v1.Pod, podStatus *ku
 			// If the container failed the startup probe, we should kill it.
 			message = fmt.Sprintf("Container %s failed startup probe", container.Name)
 			reason = reasonStartupProbe
-		} else if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-			if keep := m.computePodResizeAction(pod, idx, containerStatus, &changes); keep {
-				keepCount++
-			}
-			continue
 		} else {
 			// Keep the container.
 			keepCount++

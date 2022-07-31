@@ -28,11 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	"k8s.io/kubernetes/pkg/features"
 	sc "k8s.io/kubernetes/pkg/securitycontext"
 	hashutil "k8s.io/kubernetes/pkg/util/hash"
 	"k8s.io/kubernetes/third_party/forked/golang/expansion"
@@ -105,16 +103,25 @@ func HashContainer(container *v1.Container) uint64 {
 	// Omit nil or empty field when calculating hash value
 	// Please see https://github.com/kubernetes/kubernetes/issues/53644
 	containerJSON, _ := json.Marshal(container)
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-		// In-Place Pod Vertical Scaling allows mutable Resources field.
-		// Changes to this field may not require container restart depending
-		// on policy. So it is excluded from hash.
-		containerCopy := container.DeepCopy()
-		containerCopy.Resources = v1.ResourceRequirements{}
-		containerJSON, _ = json.Marshal(containerCopy)
-	}
 	hashutil.DeepHashObject(hash, containerJSON)
 	return uint64(hash.Sum32())
+}
+
+// HashContainerWithoutResources returns the hash of the container with Resources field zero'd out.
+func HashContainerWithoutResources(container *v1.Container) uint64 {
+	// InPlacePodVerticalScaling enables mutable Resources field.
+	// Changes to this field may not require container restart depending on policy.
+	// Compute hash over fields besides the Resources field
+	// NOTE: This is needed during alpha and beta so that containers using Resources but
+	//       not subject to In-place resize are not unexpectedly restarted when
+	//       InPlacePodVerticalScaling feature-gate is toggled.
+	//TODO(vinaykul): Remove this in GA+1 and make HashContainerWithoutResources to become Hash.
+	hashWithoutResources := fnv.New32a()
+	containerCopy := container.DeepCopy()
+	containerCopy.Resources = v1.ResourceRequirements{}
+	containerJSON, _ := json.Marshal(containerCopy)
+	hashutil.DeepHashObject(hashWithoutResources, containerJSON)
+	return uint64(hashWithoutResources.Sum32())
 }
 
 // envVarsToMap constructs a map of environment name to value from a slice
@@ -252,12 +259,13 @@ func ConvertPodStatusToRunningPod(runtimeName string, podStatus *PodStatus) Pod 
 			continue
 		}
 		container := &Container{
-			ID:      containerStatus.ID,
-			Name:    containerStatus.Name,
-			Image:   containerStatus.Image,
-			ImageID: containerStatus.ImageID,
-			Hash:    containerStatus.Hash,
-			State:   containerStatus.State,
+			ID:                   containerStatus.ID,
+			Name:                 containerStatus.Name,
+			Image:                containerStatus.Image,
+			ImageID:              containerStatus.ImageID,
+			Hash:                 containerStatus.Hash,
+			HashWithoutResources: containerStatus.HashWithoutResources,
+			State:                containerStatus.State,
 		}
 		runningPod.Containers = append(runningPod.Containers, container)
 	}

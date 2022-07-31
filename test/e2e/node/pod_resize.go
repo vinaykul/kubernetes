@@ -151,6 +151,9 @@ func initDefaultResizePolicy(containers []TestContainerInfo) {
 func makeTestContainer(tcInfo TestContainerInfo) (v1.Container, v1.ContainerStatus) {
 	cmd := "trap exit TERM; while true; do sleep 1; done"
 	res, alloc, resizePol := getTestResourceInfo(tcInfo)
+	bTrue := true
+	bFalse := false
+	userID := int64(1001)
 	tc := v1.Container{
 		Name:         tcInfo.Name,
 		Image:        imageutils.GetE2EImage(imageutils.BusyBox),
@@ -158,6 +161,18 @@ func makeTestContainer(tcInfo TestContainerInfo) (v1.Container, v1.ContainerStat
 		Args:         []string{"-c", cmd},
 		Resources:    res,
 		ResizePolicy: resizePol,
+		SecurityContext: &v1.SecurityContext{
+			Privileged:               &bFalse,
+			AllowPrivilegeEscalation: &bFalse,
+			RunAsNonRoot:             &bTrue,
+			RunAsUser:                &userID,
+			Capabilities: &v1.Capabilities{
+				Drop: []v1.Capability{"ALL"},
+			},
+			SeccompProfile: &v1.SeccompProfile{
+				Type: v1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
 	}
 
 	tcStatus := v1.ContainerStatus{
