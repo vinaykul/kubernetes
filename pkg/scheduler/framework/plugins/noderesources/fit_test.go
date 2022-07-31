@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -776,6 +777,41 @@ func TestFitScore(t *testing.T) {
 
 			if !reflect.DeepEqual(test.expectedPriorities, gotPriorities) {
 				t.Errorf("expected:\n\t%+v,\ngot:\n\t%+v", test.expectedPriorities, gotPriorities)
+			}
+		})
+	}
+}
+
+func TestEventsToRegister(t *testing.T) {
+	tests := []struct {
+		name                             string
+		inPlacePodVerticalScalingEnabled bool
+		expectedClusterEvents            []framework.ClusterEvent
+	}{
+		{
+			"Register events with InPlacePodVerticalScaling feature enabled",
+			true,
+			[]framework.ClusterEvent{
+				{Resource: "Pod", ActionType: framework.Update | framework.Delete},
+				{Resource: "Node", ActionType: framework.Add | framework.Update},
+			},
+		},
+		{
+			"Register events with InPlacePodVerticalScaling feature disabled",
+			false,
+			[]framework.ClusterEvent{
+				{Resource: "Pod", ActionType: framework.Delete},
+				{Resource: "Node", ActionType: framework.Add | framework.Update},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fp := &Fit{enableInPlacePodVerticalScaling: test.inPlacePodVerticalScalingEnabled}
+			actualClusterEvents := fp.EventsToRegister()
+			if diff := cmp.Diff(test.expectedClusterEvents, actualClusterEvents); diff != "" {
+				t.Error("Cluster Events doesn't match extected events (-expected +actual):\n", diff)
 			}
 		})
 	}
