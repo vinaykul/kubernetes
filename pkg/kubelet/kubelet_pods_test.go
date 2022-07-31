@@ -3838,8 +3838,8 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 	CPU2AndMem2G := v1.ResourceList{v1.ResourceCPU: resource.MustParse("2"), v1.ResourceMemory: resource.MustParse("2Gi")}
 	CPU1AndMem1GAndStorage2G := CPU1AndMem1G.DeepCopy()
 	CPU1AndMem1GAndStorage2G[v1.ResourceEphemeralStorage] = resource.MustParse("2Gi")
-	CPU2AndMem2GAndStorage4G := CPU2AndMem2G.DeepCopy()
-	CPU2AndMem2GAndStorage4G[v1.ResourceEphemeralStorage] = resource.MustParse("4Gi")
+	CPU2AndMem2GAndStorage2G := CPU2AndMem2G.DeepCopy()
+	CPU2AndMem2GAndStorage2G[v1.ResourceEphemeralStorage] = resource.MustParse("2Gi")
 
 	testKubelet := newTestKubelet(t, false)
 	defer testKubelet.Cleanup()
@@ -3929,7 +3929,7 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 					Image:     "img",
 					ImageID:   "img1234",
 					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
-					Resources: &v1.ResourceRequirements{Limits: CPU2AndMem2GAndStorage4G, Requests: CPU2AndMem2GAndStorage4G},
+					Resources: &v1.ResourceRequirements{Limits: CPU2AndMem2GAndStorage2G, Requests: CPU2AndMem2GAndStorage2G},
 				},
 			},
 			Expected: []v1.ContainerStatus{
