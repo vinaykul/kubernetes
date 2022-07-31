@@ -44,19 +44,17 @@ import (
 )
 
 const (
-	CgroupCPUPeriod string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
-	CgroupCPUShares string = "/sys/fs/cgroup/cpu/cpu.shares"
-	CgroupCPUQuota  string = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-	CgroupMemLimit  string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+	CgroupCPUPeriod    string = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+	CgroupCPUShares    string = "/sys/fs/cgroup/cpu/cpu.shares"
+	CgroupCPUQuota     string = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+	CgroupMemLimit     string = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+	Cgroupv2MemLimit   string = "/sys/fs/cgroup/memory.max"
+	Cgroupv2MemRequest string = "/sys/fs/cgroup/memory.min"
+	Cgroupv2CPULimit   string = "/sys/fs/cgroup/cpu.max"
+	Cgroupv2CPURequest string = "/sys/fs/cgroup/cpu.weight"
 
 	PollInterval time.Duration = 2 * time.Second
 	PollTimeout  time.Duration = 4 * time.Minute
-)
-
-var (
-	featureGatePostAlpha bool
-	podClient            *framework.PodClient
-	ns                   string
 )
 
 type ContainerResources struct {
@@ -74,6 +72,15 @@ type TestContainerInfo struct {
 	CPUPolicy    *v1.ResourceResizePolicy
 	MemPolicy    *v1.ResourceResizePolicy
 	RestartCount int32
+}
+
+func isFeatureGatePostAlpha() bool {
+	if fs, found := utilfeature.DefaultFeatureGate.DeepCopy().GetAll()[features.InPlacePodVerticalScaling]; found {
+		if fs.PreRelease == featuregate.Alpha {
+			return false
+		}
+	}
+	return true
 }
 
 func getTestResourceInfo(tcInfo TestContainerInfo) (v1.ResourceRequirements, v1.ResourceList, []v1.ContainerResizePolicy) {
@@ -279,7 +286,27 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 	}
 }
 
+func isPodOnCgroupv2Node(pod *v1.Pod) bool {
+	// Deterimne if pod is running on cgroupv2 or cgroupv1 node
+	cgv2File := "/sys/fs/cgroup/cgroup.controllers"
+	cmd := []string{"ls", cgv2File}
+	_, err := framework.LookForStringInPodExec(pod.Namespace, pod.Name, cmd, cgv2File, PollTimeout)
+	if err == nil {
+		return true
+	}
+	return false
+}
+
 func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, flagError bool) bool {
+	podOnCgroupv2Node := isPodOnCgroupv2Node(pod)
+	cgroupMemLimit := Cgroupv2MemLimit
+	cgroupCPULimit := Cgroupv2CPULimit
+	cgroupCPURequest := Cgroupv2CPURequest
+	if !podOnCgroupv2Node {
+		cgroupMemLimit = CgroupMemLimit
+		cgroupCPULimit = CgroupCPUQuota
+		cgroupCPURequest = CgroupCPUShares
+	}
 	verifyCgroupValue := func(cName, cgPath, expectedCgValue string) bool {
 		cmd := []string{"head", "-n", "1", cgPath}
 		cgValue, err := framework.LookForStringInPodExecToContainer(pod.Namespace, pod.Name, cName, cmd, expectedCgValue, PollTimeout)
@@ -302,6 +329,7 @@ func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, fl
 		tc, _ := makeTestContainer(ci)
 		if tc.Resources.Limits != nil || tc.Resources.Requests != nil {
 			var cpuShares int64
+			var cpuLimitString, memLimitString string
 			memLimitInBytes := tc.Resources.Limits.Memory().Value()
 			cpuRequest := tc.Resources.Requests.Cpu()
 			cpuLimit := tc.Resources.Limits.Cpu()
@@ -314,23 +342,31 @@ func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, fl
 			if cpuLimit.IsZero() {
 				cpuQuota = -1
 			}
-			if !verifyCgroupValue(ci.Name, CgroupCPUShares, strconv.FormatInt(cpuShares, 10)) {
-				return false
+			cpuLimitString = strconv.FormatInt(cpuQuota, 10)
+			if podOnCgroupv2Node && cpuLimitString == "-1" {
+				cpuLimitString = "max"
 			}
-			if !verifyCgroupValue(ci.Name, CgroupCPUQuota, strconv.FormatInt(cpuQuota, 10)) {
-				return false
+			memLimitString = strconv.FormatInt(memLimitInBytes, 10)
+			if podOnCgroupv2Node && memLimitString == "0" {
+				memLimitString = "max"
 			}
-			if memLimitInBytes > 0 {
-				if !verifyCgroupValue(ci.Name, CgroupMemLimit, strconv.FormatInt(memLimitInBytes, 10)) {
+			if memLimitString != "0" {
+				if !verifyCgroupValue(ci.Name, cgroupMemLimit, memLimitString) {
 					return false
 				}
+			}
+			if !verifyCgroupValue(ci.Name, cgroupCPULimit, cpuLimitString) {
+				return false
+			}
+			if !verifyCgroupValue(ci.Name, cgroupCPURequest, strconv.FormatInt(cpuShares, 10)) {
+				return false
 			}
 		}
 	}
 	return true
 }
 
-func waitForPodResizeActuation(pod, patchedPod *v1.Pod, expectedContainers []TestContainerInfo) *v1.Pod {
+func waitForPodResizeActuation(podClient *framework.PodClient, pod, patchedPod *v1.Pod, expectedContainers []TestContainerInfo) *v1.Pod {
 
 	waitForContainerRestart := func() error {
 		var restartContainersExpected []string
@@ -408,12 +444,15 @@ func waitForPodResizeActuation(pod, patchedPod *v1.Pod, expectedContainers []Tes
 	// Wait for pod resource allocations to equal expected values after resize
 	resizedPod, aErr := waitPodAllocationsEqualsExpected()
 	framework.ExpectNoError(aErr, "failed to verify pod resource allocation values equals expected values")
-	// Wait for container cgroup values to equal expected cgroup values after resize
-	cErr := waitContainerCgroupValuesEqualsExpected()
-	framework.ExpectNoError(cErr, "failed to verify container cgroup values equals expected values")
+	//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
+	if !isPodOnCgroupv2Node(pod) {
+		// Wait for container cgroup values to equal expected cgroup values after resize
+		cErr := waitContainerCgroupValuesEqualsExpected()
+		framework.ExpectNoError(cErr, "failed to verify container cgroup values equals expected values")
+	}
 	//TODO(vinaykul,InPlacePodVerticalScaling): Remove featureGatePostAlpha upon exiting Alpha.
 	//                containerd needs to add CRI support before Beta (See Node KEP #2273)
-	if featureGatePostAlpha {
+	if isFeatureGatePostAlpha() {
 		// Wait for PodSpec container resources to equal PodStatus container resources indicating resize is complete
 		rPod, rErr := waitPodStatusResourcesEqualSpecResources()
 		framework.ExpectNoError(rErr, "failed to verify pod spec resources equals pod status resources")
@@ -426,11 +465,6 @@ func waitForPodResizeActuation(pod, patchedPod *v1.Pod, expectedContainers []Tes
 
 func doPodResizeTests() {
 	f := framework.NewDefaultFramework("pod-resize")
-
-	ginkgo.BeforeEach(func() {
-		podClient = f.PodClient()
-		ns = f.Namespace.Name
-	})
 
 	type testCase struct {
 		name        string
@@ -1149,15 +1183,15 @@ func doPodResizeTests() {
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
 			initDefaultResizePolicy(tc.containers)
 			initDefaultResizePolicy(tc.expected)
-			testPod = makeTestPod(ns, "testpod", tStamp, tc.containers)
+			testPod = makeTestPod(f.Namespace.Name, "testpod", tStamp, tc.containers)
 
 			ginkgo.By("creating pod")
-			newPod := podClient.CreateSync(testPod)
+			newPod := f.PodClient().CreateSync(testPod)
 
 			ginkgo.By("verifying the pod is in kubernetes")
 			selector := labels.SelectorFromSet(labels.Set(map[string]string{"time": tStamp}))
 			options := metav1.ListOptions{LabelSelector: selector.String()}
-			podList, err := podClient.List(context.TODO(), options)
+			podList, err := f.PodClient().List(context.TODO(), options)
 			framework.ExpectNoError(err, "failed to query for pods")
 			gomega.Expect(len(podList.Items) == 1)
 
@@ -1179,10 +1213,13 @@ func doPodResizeTests() {
 			verifyPodAllocations(patchedPod, tc.containers, true)
 
 			ginkgo.By("waiting for resize to be actuated")
-			resizedPod := waitForPodResizeActuation(newPod, patchedPod, tc.expected)
+			resizedPod := waitForPodResizeActuation(f.PodClient(), newPod, patchedPod, tc.expected)
 
 			ginkgo.By("verifying pod container's cgroup values after resize")
-			verifyPodContainersCgroupValues(resizedPod, tc.expected, true)
+			//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
+			if !isPodOnCgroupv2Node(resizedPod) {
+				verifyPodContainersCgroupValues(resizedPod, tc.expected, true)
+			}
 
 			ginkgo.By("verifying pod resources after resize")
 			verifyPodResources(resizedPod, tc.expected)
@@ -1200,16 +1237,11 @@ func doPodResizeTests() {
 func doPodResizeResourceQuotaTests() {
 	f := framework.NewDefaultFramework("pod-resize-resource-quota")
 
-	ginkgo.BeforeEach(func() {
-		podClient = f.PodClient()
-		ns = f.Namespace.Name
-	})
-
 	ginkgo.It("pod-resize-resource-quota-test", func() {
 		resourceQuota := v1.ResourceQuota{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "resize-resource-quota",
-				Namespace: ns,
+				Namespace: f.Namespace.Name,
 			},
 			Spec: v1.ResourceQuotaSpec{
 				Hard: v1.ResourceList{
@@ -1241,23 +1273,23 @@ func doPodResizeResourceQuotaTests() {
 		]}}`
 
 		ginkgo.By("Creating a ResourceQuota")
-		_, rqErr := f.ClientSet.CoreV1().ResourceQuotas(ns).Create(context.TODO(), &resourceQuota, metav1.CreateOptions{})
+		_, rqErr := f.ClientSet.CoreV1().ResourceQuotas(f.Namespace.Name).Create(context.TODO(), &resourceQuota, metav1.CreateOptions{})
 		framework.ExpectNoError(rqErr, "failed to create resource quota")
 
 		tStamp := strconv.Itoa(time.Now().Nanosecond())
 		initDefaultResizePolicy(containers)
 		initDefaultResizePolicy(expected)
-		testPod1 := makeTestPod(ns, "testpod1", tStamp, containers)
-		testPod2 := makeTestPod(ns, "testpod2", tStamp, containers)
+		testPod1 := makeTestPod(f.Namespace.Name, "testpod1", tStamp, containers)
+		testPod2 := makeTestPod(f.Namespace.Name, "testpod2", tStamp, containers)
 
 		ginkgo.By("creating pods")
-		newPod1 := podClient.CreateSync(testPod1)
-		newPod2 := podClient.CreateSync(testPod2)
+		newPod1 := f.PodClient().CreateSync(testPod1)
+		newPod2 := f.PodClient().CreateSync(testPod2)
 
 		ginkgo.By("verifying the pod is in kubernetes")
 		selector := labels.SelectorFromSet(labels.Set(map[string]string{"time": tStamp}))
 		options := metav1.ListOptions{LabelSelector: selector.String()}
-		podList, listErr := podClient.List(context.TODO(), options)
+		podList, listErr := f.PodClient().List(context.TODO(), options)
 		framework.ExpectNoError(listErr, "failed to query for pods")
 		gomega.Expect(len(podList.Items) == 2)
 
@@ -1274,10 +1306,13 @@ func doPodResizeResourceQuotaTests() {
 		verifyPodAllocations(patchedPod, containers, true)
 
 		ginkgo.By("waiting for resize to be actuated")
-		resizedPod := waitForPodResizeActuation(newPod1, patchedPod, expected)
+		resizedPod := waitForPodResizeActuation(f.PodClient(), newPod1, patchedPod, expected)
 
 		ginkgo.By("verifying pod container's cgroup values after resize")
-		verifyPodContainersCgroupValues(resizedPod, expected, true)
+		//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
+		if !isPodOnCgroupv2Node(resizedPod) {
+			verifyPodContainersCgroupValues(resizedPod, expected, true)
+		}
 
 		ginkgo.By("verifying pod resources after resize")
 		verifyPodResources(resizedPod, expected)
@@ -1292,7 +1327,7 @@ func doPodResizeResourceQuotaTests() {
 			resourceQuota.Name)
 
 		ginkgo.By("verifying pod patched for resize exceeding CPU resource quota remains unchanged")
-		patchedPodExceedCPU, pErrEx1 := podClient.Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
+		patchedPodExceedCPU, pErrEx1 := f.PodClient().Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
 		framework.ExpectNoError(pErrEx1, "failed to get pod post exceed CPU resize")
 		verifyPodResources(patchedPodExceedCPU, expected)
 		verifyPodAllocations(patchedPodExceedCPU, expected, true)
@@ -1304,7 +1339,7 @@ func doPodResizeResourceQuotaTests() {
 			resourceQuota.Name)
 
 		ginkgo.By("verifying pod patched for resize exceeding memory resource quota remains unchanged")
-		patchedPodExceedMemory, pErrEx2 := podClient.Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
+		patchedPodExceedMemory, pErrEx2 := f.PodClient().Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
 		framework.ExpectNoError(pErrEx2, "failed to get pod post exceed memory resize")
 		verifyPodResources(patchedPodExceedMemory, expected)
 		verifyPodAllocations(patchedPodExceedMemory, expected, true)
@@ -1319,11 +1354,6 @@ func doPodResizeResourceQuotaTests() {
 
 func doPodResizeErrorTests() {
 	f := framework.NewDefaultFramework("pod-resize-errors")
-
-	ginkgo.BeforeEach(func() {
-		podClient = f.PodClient()
-		ns = f.Namespace.Name
-	})
 
 	type testCase struct {
 		name        string
@@ -1362,15 +1392,15 @@ func doPodResizeErrorTests() {
 			tStamp := strconv.Itoa(time.Now().Nanosecond())
 			initDefaultResizePolicy(tc.containers)
 			initDefaultResizePolicy(tc.expected)
-			testPod = makeTestPod(ns, "testpod", tStamp, tc.containers)
+			testPod = makeTestPod(f.Namespace.Name, "testpod", tStamp, tc.containers)
 
 			ginkgo.By("creating pod")
-			newPod := podClient.CreateSync(testPod)
+			newPod := f.PodClient().CreateSync(testPod)
 
 			ginkgo.By("verifying the pod is in kubernetes")
 			selector := labels.SelectorFromSet(labels.Set(map[string]string{"time": tStamp}))
 			options := metav1.ListOptions{LabelSelector: selector.String()}
-			podList, err := podClient.List(context.TODO(), options)
+			podList, err := f.PodClient().List(context.TODO(), options)
 			framework.ExpectNoError(err, "failed to query for pods")
 			gomega.Expect(len(podList.Items) == 1)
 
@@ -1393,7 +1423,10 @@ func doPodResizeErrorTests() {
 			}
 
 			ginkgo.By("verifying pod container's cgroup values after patch")
-			verifyPodContainersCgroupValues(patchedPod, tc.expected, true)
+			//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
+			if !isPodOnCgroupv2Node(patchedPod) {
+				verifyPodContainersCgroupValues(patchedPod, tc.expected, true)
+			}
 
 			ginkgo.By("verifying pod resources after patch")
 			verifyPodResources(patchedPod, tc.expected)
@@ -1409,12 +1442,6 @@ func doPodResizeErrorTests() {
 }
 
 var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalScaling]", func() {
-	featureGatePostAlpha = true
-	if fs, found := utilfeature.DefaultFeatureGate.DeepCopy().GetAll()[features.InPlacePodVerticalScaling]; found {
-		if fs.PreRelease == featuregate.Alpha {
-			featureGatePostAlpha = false
-		}
-	}
 	doPodResizeTests()
 	doPodResizeResourceQuotaTests()
 	doPodResizeErrorTests()
