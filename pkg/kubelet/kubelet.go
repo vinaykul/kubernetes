@@ -1738,7 +1738,7 @@ func (kl *Kubelet) syncPod(ctx context.Context, updateType kubetypes.SyncPodType
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		// Handle pod resize here instead of doing it in HandlePodUpdates because
 		// this conveniently retries any Deferred resize requests
-		// TODO(vinaykul): Investigate doing this in HandlePodUpdates + periodic SyncLoop scan
+		// TODO(vinaykul,InPlacePodVerticalScaling): Investigate doing this in HandlePodUpdates + periodic SyncLoop scan
 		//     See: https://github.com/kubernetes/kubernetes/pull/102884#discussion_r663160060
 		if kl.podWorkers.CouldHaveRunningContainers(pod.UID) && !kubetypes.IsStaticPod(pod) {
 			kl.handlePodResourcesResize(pod)
@@ -1761,27 +1761,12 @@ func (kl *Kubelet) syncPod(ctx context.Context, updateType kubetypes.SyncPodType
 		return false, nil
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) && isPodResizeInProgress(pod, &apiPodStatus) {
 		// While resize is in progress, periodically call PLEG to update pod cache
-		resizeInProgress := false
-		for _, c := range pod.Spec.Containers {
-			if cs, ok := podutil.GetContainerStatus(apiPodStatus.ContainerStatuses, c.Name); ok {
-				if cs.Resources == nil {
-					continue
-				}
-				if diff.ObjectDiff(c.Resources.Limits, cs.Resources.Limits) != "" ||
-					diff.ObjectDiff(cs.ResourcesAllocated, cs.Resources.Requests) != "" {
-					resizeInProgress = true
-					break
-				}
-			}
-		}
-		if resizeInProgress == true {
-			runningPod := kubecontainer.ConvertPodStatusToRunningPod(kl.getRuntime().Type(), podStatus)
-			if err := kl.pleg.UpdateCache(&runningPod, pod.UID); err != nil {
-				klog.ErrorS(err, "Failed to update pod cache", "pod", klog.KObj(pod))
-				return false, err
-			}
+		runningPod := kubecontainer.ConvertPodStatusToRunningPod(kl.getRuntime().Type(), podStatus)
+		if err := kl.pleg.UpdateCache(&runningPod, pod.UID); err != nil {
+			klog.ErrorS(err, "Failed to update pod cache", "pod", klog.KObj(pod))
+			return false, err
 		}
 	}
 
@@ -2332,7 +2317,7 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 
 				// For new pod, checkpoint the resource values at which the Pod has been admitted
 				if err := kl.statusManager.SetPodAllocation(podCopy); err != nil {
-					//TODO(vinaykul): Can we recover from this in some way? Investigate
+					//TODO(vinaykul,InPlacePodVerticalScaling): Can we recover from this in some way? Investigate
 					klog.ErrorS(err, "SetPodAllocation failed", "pod", klog.KObj(pod))
 				}
 			} else {
@@ -2415,6 +2400,21 @@ func (kl *Kubelet) HandlePodSyncs(pods []*v1.Pod) {
 	}
 }
 
+func isPodResizeInProgress(pod *v1.Pod, podStatus *v1.PodStatus) bool {
+	for _, c := range pod.Spec.Containers {
+		if cs, ok := podutil.GetContainerStatus(podStatus.ContainerStatuses, c.Name); ok {
+			if cs.Resources == nil {
+				continue
+			}
+			if diff.ObjectDiff(c.Resources.Limits, cs.Resources.Limits) != "" ||
+				diff.ObjectDiff(cs.ResourcesAllocated, cs.Resources.Requests) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.PodResizeStatus) {
 	var otherActivePods []*v1.Pod
 
@@ -2428,7 +2428,7 @@ func (kl *Kubelet) canResizePod(pod *v1.Pod) (bool, *v1.Pod, v1.PodResizeStatus)
 	cpuRequests := resource.GetResourceRequest(pod, v1.ResourceCPU)
 	memRequests := resource.GetResourceRequest(pod, v1.ResourceMemory)
 	if cpuRequests > cpuAvailable || memRequests > memAvailable {
-		klog.V(3).InfoS("Resize is not feasible as request exceeds available node resources", "Pod", pod.Name)
+		klog.V(3).InfoS("Resize is not feasible as request exceeds allocatable node resources", "Pod", pod.Name)
 		return false, nil, v1.PodResizeStatusInfeasible
 	}
 
@@ -2492,7 +2492,7 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
 	if fit {
 		// Update pod resource allocation checkpoint
 		if err := kl.statusManager.SetPodAllocation(updatedPod); err != nil {
-			//TODO(vinaykul): Can we recover from this in some way? Investigate
+			//TODO(vinaykul,InPlacePodVerticalScaling): Can we recover from this in some way? Investigate
 			klog.ErrorS(err, "SetPodAllocation failed", "pod", klog.KObj(pod))
 		}
 		*pod = *updatedPod
@@ -2500,7 +2500,7 @@ func (kl *Kubelet) handlePodResourcesResize(pod *v1.Pod) {
 	if resizeStatus != "" {
 		// Save resize decision to checkpoint
 		if err := kl.statusManager.SetPodResizeStatus(pod.UID, resizeStatus); err != nil {
-			//TODO(vinaykul): Can we recover from this in some way? Investigate
+			//TODO(vinaykul,InPlacePodVerticalScaling): Can we recover from this in some way? Investigate
 			klog.ErrorS(err, "SetPodResizeStatus failed", "pod", klog.KObj(pod))
 		}
 		pod.Status.Resize = resizeStatus
