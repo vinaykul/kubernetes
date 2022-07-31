@@ -18,6 +18,7 @@ package pleg
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 )
 
 // PodLifeCycleEventType define the event type of pod life cycle events.
@@ -54,4 +55,5 @@ type PodLifecycleEventGenerator interface {
 	Start()
 	Watch() chan *PodLifecycleEvent
 	Healthy() (bool, error)
+	UpdateCache(*kubecontainer.Pod, types.UID) error
 }

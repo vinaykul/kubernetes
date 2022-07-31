@@ -27,6 +27,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/util/flowcontrol"
@@ -305,6 +306,18 @@ type PodStatus struct {
 	SandboxStatuses []*runtimeapi.PodSandboxStatus
 }
 
+// ContainerResources represents the Resources allocated to the running container.
+type ContainerResources struct {
+	// CPU capacity reserved for the container (cpu.shares)
+	CPURequest *resource.Quantity
+	// CPU limit enforced on the container (cpu.cfs_quota_us)
+	CPULimit *resource.Quantity
+	// Memory capaacity reserved for the container
+	MemoryRequest *resource.Quantity
+	// Memory limit enforced on the container (memory.limit_in_bytes)
+	MemoryLimit *resource.Quantity
+}
+
 // Status represents the status of a container.
 type Status struct {
 	// ID of the container.
@@ -335,6 +348,8 @@ type Status struct {
 	// Message written by the container before exiting (stored in
 	// TerminationMessagePath).
 	Message string
+	// CPU and memory resources for this container
+	Resources *ContainerResources
 }
 
 // FindContainerStatusByName returns container status in the pod status with the given name.
