@@ -525,6 +525,12 @@
               "requestsKey": "0"
             }
           },
+          "resizePolicy": [
+            {
+              "resourceName": "resourceNameValue",
+              "policy": "policyValue"
+            }
+          ],
           "volumeMounts": [
             {
               "name": "nameValue",
@@ -797,6 +803,12 @@
               "requestsKey": "0"
             }
           },
+          "resizePolicy": [
+            {
+              "resourceName": "resourceNameValue",
+              "policy": "policyValue"
+            }
+          ],
           "volumeMounts": [
             {
               "name": "nameValue",
@@ -1069,6 +1081,12 @@
               "requestsKey": "0"
             }
           },
+          "resizePolicy": [
+            {
+              "resourceName": "resourceNameValue",
+              "policy": "policyValue"
+            }
+          ],
           "volumeMounts": [
             {
               "name": "nameValue",

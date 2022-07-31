@@ -1143,6 +1143,19 @@
             ],
             "description": "Periodic probe of container service readiness. Container will be removed from service endpoints if the probe fails. Cannot be updated. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes"
           },
+          "resizePolicy": {
+            "description": "Resources resize policy for the container.",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/io.k8s.api.core.v1.ContainerResizePolicy"
+                }
+              ],
+              "default": {}
+            },
+            "type": "array",
+            "x-kubernetes-list-type": "atomic"
+          },
           "resources": {
             "allOf": [
               {
@@ -1275,6 +1288,26 @@
         },
         "required": [
           "containerPort"
+        ],
+        "type": "object"
+      },
+      "io.k8s.api.core.v1.ContainerResizePolicy": {
+        "description": "ContainerResizePolicy represents resource resize policy for a single container.",
+        "properties": {
+          "policy": {
+            "default": "",
+            "description": "Resource resize policy applicable to the above mentioned resource. If not specified, it defaults to RestartNotRequired.",
+            "type": "string"
+          },
+          "resourceName": {
+            "default": "",
+            "description": "Name of the resource type to which this resource resize policy applies. Supported values: cpu, memory.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceName",
+          "policy"
         ],
         "type": "object"
       },
@@ -1422,6 +1455,26 @@
             "default": false,
             "description": "Specifies whether the container has passed its readiness probe.",
             "type": "boolean"
+          },
+          "resources": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/io.k8s.api.core.v1.ResourceRequirements"
+              }
+            ],
+            "description": "Compute resource requests and limits enacted on the running container."
+          },
+          "resourcesAllocated": {
+            "additionalProperties": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/io.k8s.apimachinery.pkg.api.resource.Quantity"
+                }
+              ],
+              "default": {}
+            },
+            "description": "Node compute resources allocated for the container.",
+            "type": "object"
           },
           "restartCount": {
             "default": 0,
@@ -1939,6 +1992,19 @@
               }
             ],
             "description": "Probes are not allowed for ephemeral containers."
+          },
+          "resizePolicy": {
+            "description": "Resources resize policy for the container.",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/io.k8s.api.core.v1.ContainerResizePolicy"
+                }
+              ],
+              "default": {}
+            },
+            "type": "array",
+            "x-kubernetes-list-type": "atomic"
           },
           "resources": {
             "allOf": [
@@ -5311,6 +5377,10 @@
           },
           "reason": {
             "description": "A brief CamelCase message indicating details about why the pod is in this state. e.g. 'Evicted'",
+            "type": "string"
+          },
+          "resize": {
+            "description": "Status of resources resize desired for pod's containers. It is empty if no resources resize is pending. Any changes to container resources will automatically set this to \"Proposed\"",
             "type": "string"
           },
           "startTime": {
