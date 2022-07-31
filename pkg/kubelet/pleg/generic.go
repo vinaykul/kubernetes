@@ -18,6 +18,7 @@ package pleg
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -64,6 +65,8 @@ type GenericPLEG struct {
 	// Pods that failed to have their status retrieved during a relist. These pods will be
 	// retried during the next relisting.
 	podsToReinspect map[types.UID]*kubecontainer.Pod
+	// Mutex to serialize updateCache called by relist vs UpdateCache interface
+	podCacheMutex sync.Mutex
 }
 
 // plegContainerState has a one-to-one mapping to the
@@ -396,6 +399,8 @@ func (g *GenericPLEG) updateCache(pod *kubecontainer.Pod, pid types.UID) error {
 		g.cache.Delete(pid)
 		return nil
 	}
+	g.podCacheMutex.Lock()
+	defer g.podCacheMutex.Unlock()
 	timestamp := g.clock.Now()
 	// TODO: Consider adding a new runtime method
 	// GetPodStatus(pod *kubecontainer.Pod) so that Docker can avoid listing
@@ -425,6 +430,16 @@ func (g *GenericPLEG) updateCache(pod *kubecontainer.Pod, pid types.UID) error {
 
 	g.cache.Set(pod.ID, status, err, timestamp)
 	return err
+}
+
+func (g *GenericPLEG) UpdateCache(pod *kubecontainer.Pod, pid types.UID) error {
+	if !g.cacheEnabled() {
+		return fmt.Errorf("pod cache disabled")
+	}
+	if pod == nil {
+		return fmt.Errorf("pod cannot be nil")
+	}
+	return g.updateCache(pod, pid)
 }
 
 func updateEvents(eventsByPodID map[types.UID][]*PodLifecycleEvent, e *PodLifecycleEvent) {

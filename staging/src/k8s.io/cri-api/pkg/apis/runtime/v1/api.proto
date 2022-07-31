@@ -1154,6 +1154,8 @@ message ContainerStatus {
     repeated Mount mounts = 14;
     // Log path of container.
     string log_path = 15;
+    // Resource limits configuration of the container.
+    ContainerResources resources = 16;
 }
 
 message ContainerStatusResponse {
@@ -1164,6 +1166,14 @@ message ContainerStatusResponse {
     // debug, e.g. pid for linux container based container runtime.
     // It should only be returned non-empty when Verbose is true.
     map<string, string> info = 2;
+}
+
+// ContainerResources holds resource limits configuration for a container.
+message ContainerResources {
+    // Resource limits configuration specific to Linux container.
+    LinuxContainerResources linux = 1;
+    // Resource limits configuration specific to Windows container.
+    WindowsContainerResources windows = 2;
 }
 
 message UpdateContainerResourcesRequest {
@@ -1177,6 +1187,8 @@ message UpdateContainerResourcesRequest {
     // container resources updating. This can be used for specifying experimental
     // resources to update or other options to use when updating the container.
     map<string, string> annotations = 4;
+    // Resource configuration for the container.
+    ContainerResources resources = 5;
 }
 
 message UpdateContainerResourcesResponse {}
