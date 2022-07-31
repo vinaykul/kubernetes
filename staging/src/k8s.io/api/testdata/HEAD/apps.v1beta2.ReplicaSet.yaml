@@ -312,6 +312,9 @@ spec:
             port: portValue
           terminationGracePeriodSeconds: 7
           timeoutSeconds: 3
+        resizePolicy:
+        - policy: policyValue
+          resourceName: resourceNameValue
         resources:
           limits:
             limitsKey: "0"
@@ -513,6 +516,9 @@ spec:
             port: portValue
           terminationGracePeriodSeconds: 7
           timeoutSeconds: 3
+        resizePolicy:
+        - policy: policyValue
+          resourceName: resourceNameValue
         resources:
           limits:
             limitsKey: "0"
@@ -715,6 +721,9 @@ spec:
             port: portValue
           terminationGracePeriodSeconds: 7
           timeoutSeconds: 3
+        resizePolicy:
+        - policy: policyValue
+          resourceName: resourceNameValue
         resources:
           limits:
             limitsKey: "0"
