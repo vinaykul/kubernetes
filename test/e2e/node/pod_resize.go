@@ -39,7 +39,7 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
@@ -245,11 +245,13 @@ func verifyPodAllocations(pod *v1.Pod, tcInfo []TestContainerInfo, flagError boo
 		cStatus, found := cStatusMap[ci.Name]
 		gomega.Expect(found == true)
 		if ci.Allocations == nil {
-			alloc := &ContainerAllocations{CPUAlloc: ci.Resources.CPUReq, MemAlloc: ci.Resources.MemReq}
-			ci.Allocations = alloc
-			defer func() {
-				ci.Allocations = nil
-			}()
+			if ci.Resources != nil {
+				alloc := &ContainerAllocations{CPUAlloc: ci.Resources.CPUReq, MemAlloc: ci.Resources.MemReq}
+				ci.Allocations = alloc
+				defer func() {
+					ci.Allocations = nil
+				}()
+			}
 		}
 
 		_, tcStatus := makeTestContainer(ci)
@@ -422,7 +424,7 @@ func waitForPodResizeActuation(pod, patchedPod *v1.Pod, expectedContainers []Tes
 	return resizedPod
 }
 
-func doPodResizeTest() {
+func doPodResizeTests() {
 	f := framework.NewDefaultFramework("pod-resize")
 
 	ginkgo.BeforeEach(func() {
@@ -1195,7 +1197,7 @@ func doPodResizeTest() {
 	}
 }
 
-func doPodResizeResourceQuotaTest() {
+func doPodResizeResourceQuotaTests() {
 	f := framework.NewDefaultFramework("pod-resize-resource-quota")
 
 	ginkgo.BeforeEach(func() {
@@ -1315,6 +1317,97 @@ func doPodResizeResourceQuotaTest() {
 	})
 }
 
+func doPodResizeErrorTests() {
+	f := framework.NewDefaultFramework("pod-resize-errors")
+
+	ginkgo.BeforeEach(func() {
+		podClient = f.PodClient()
+		ns = f.Namespace.Name
+	})
+
+	type testCase struct {
+		name        string
+		containers  []TestContainerInfo
+		patchString string
+		patchError  string
+		expected    []TestContainerInfo
+	}
+
+	tests := []testCase{
+		{
+			name: "BestEffort pod - try requesting memory, expect error",
+			containers: []TestContainerInfo{
+				{
+					Name: "c1",
+				},
+			},
+			patchString: `{"spec":{"containers":[
+						{"name":"c1", "resources":{"requests":{"memory":"400Mi"}}}
+					]}}`,
+			patchError: "Pod QoS is immutable",
+			expected: []TestContainerInfo{
+				{
+					Name: "c1",
+				},
+			},
+		},
+	}
+
+	for idx := range tests {
+		tc := tests[idx]
+		ginkgo.It(tc.name, func() {
+			var testPod, patchedPod *v1.Pod
+			var pErr error
+
+			tStamp := strconv.Itoa(time.Now().Nanosecond())
+			initDefaultResizePolicy(tc.containers)
+			initDefaultResizePolicy(tc.expected)
+			testPod = makeTestPod(ns, "testpod", tStamp, tc.containers)
+
+			ginkgo.By("creating pod")
+			newPod := podClient.CreateSync(testPod)
+
+			ginkgo.By("verifying the pod is in kubernetes")
+			selector := labels.SelectorFromSet(labels.Set(map[string]string{"time": tStamp}))
+			options := metav1.ListOptions{LabelSelector: selector.String()}
+			podList, err := podClient.List(context.TODO(), options)
+			framework.ExpectNoError(err, "failed to query for pods")
+			gomega.Expect(len(podList.Items) == 1)
+
+			ginkgo.By("verifying initial pod resources, allocations, and policy are as expected")
+			verifyPodResources(newPod, tc.containers)
+			verifyPodResizePolicy(newPod, tc.containers)
+
+			ginkgo.By("verifying initial pod status resources and cgroup config are as expected")
+			verifyPodStatusResources(newPod, tc.containers)
+			verifyPodContainersCgroupValues(newPod, tc.containers, true)
+
+			ginkgo.By("patching pod for resize")
+			patchedPod, pErr = f.ClientSet.CoreV1().Pods(newPod.Namespace).Patch(context.TODO(), newPod.Name,
+				types.StrategicMergePatchType, []byte(tc.patchString), metav1.PatchOptions{})
+			if tc.patchError == "" {
+				framework.ExpectNoError(pErr, "failed to patch pod for resize")
+			} else {
+				framework.ExpectError(pErr, tc.patchError)
+				patchedPod = newPod
+			}
+
+			ginkgo.By("verifying pod container's cgroup values after patch")
+			verifyPodContainersCgroupValues(patchedPod, tc.expected, true)
+
+			ginkgo.By("verifying pod resources after patch")
+			verifyPodResources(patchedPod, tc.expected)
+
+			ginkgo.By("verifying pod allocations after patch")
+			verifyPodAllocations(patchedPod, tc.expected, true)
+
+			ginkgo.By("deleting pod")
+			err = e2epod.DeletePodWithWait(f.ClientSet, newPod)
+			framework.ExpectNoError(err, "failed to delete pod")
+		})
+	}
+}
+
 var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalScaling]", func() {
 	featureGatePostAlpha = true
 	if fs, found := utilfeature.DefaultFeatureGate.DeepCopy().GetAll()[features.InPlacePodVerticalScaling]; found {
@@ -1322,6 +1415,7 @@ var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalSca
 			featureGatePostAlpha = false
 		}
 	}
-	doPodResizeTest()
-	doPodResizeResourceQuotaTest()
+	doPodResizeTests()
+	doPodResizeResourceQuotaTests()
+	doPodResizeErrorTests()
 })
