@@ -8838,7 +8838,8 @@ type RuntimeServiceClient interface {
 	// ContainerStatus returns status of the container. If the container is not
 	// present, returns an error.
 	ContainerStatus(ctx context.Context, in *ContainerStatusRequest, opts ...grpc.CallOption) (*ContainerStatusResponse, error)
-	// UpdateContainerResources updates ContainerConfig of the container.
+	// UpdateContainerResources updates ContainerConfig of the container synchronously.
+	// If runtime fails to transactionally update the requested resources, an error is returned.
 	UpdateContainerResources(ctx context.Context, in *UpdateContainerResourcesRequest, opts ...grpc.CallOption) (*UpdateContainerResourcesResponse, error)
 	// ReopenContainerLog asks runtime to reopen the stdout/stderr log file
 	// for the container. This is often called after the log file has been
@@ -9152,7 +9153,8 @@ type RuntimeServiceServer interface {
 	// ContainerStatus returns status of the container. If the container is not
 	// present, returns an error.
 	ContainerStatus(context.Context, *ContainerStatusRequest) (*ContainerStatusResponse, error)
-	// UpdateContainerResources updates ContainerConfig of the container.
+	// UpdateContainerResources updates ContainerConfig of the container synchronously.
+	// If runtime fails to transactionally update the requested resources, an error is returned.
 	UpdateContainerResources(context.Context, *UpdateContainerResourcesRequest) (*UpdateContainerResourcesResponse, error)
 	// ReopenContainerLog asks runtime to reopen the stdout/stderr log file
 	// for the container. This is often called after the log file has been
