@@ -1441,13 +1441,13 @@ func doPodResizeErrorTests() {
 	}
 }
 
-func doPodResizeSchedulerTest() {
+func doPodResizeSchedulerTests() {
 	f := framework.NewDefaultFramework("pod-resize-scheduler")
 
-	ginkgo.It("pod-resize-scheduler-test", func() {
+	ginkgo.It("pod-resize-scheduler-testcase1", func() {
 		nodes, _ := f.ClientSet.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-		node_num := len(nodes.Items)
-		if node_num > 1 {
+		nodeNum := len(nodes.Items)
+		if nodeNum > 1 {
 			framework.Logf("There are more than 1 node in the testing cluster, so skip the pod-in-queue-resize-test!")
 			return
 		}
@@ -1517,6 +1517,11 @@ func doPodResizeSchedulerTest() {
 		ginkgo.By(fmt.Sprintf("pod %s should be running after resize", testPod2.Name))
 		framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod2))
 
+		ginkgo.By("deleting pods")
+		delErr1 := e2epod.DeletePodWithWait(f.ClientSet, testPod1)
+		framework.ExpectNoError(delErr1, "failed to delete pod %s", testPod1.Name)
+		delErr2 := e2epod.DeletePodWithWait(f.ClientSet, testPod2)
+		framework.ExpectNoError(delErr2, "failed to delete pod %s", testPod2.Name)
 		/*
 		c3 := []TestContainerInfo{
 			{
@@ -1557,7 +1562,6 @@ func doPodResizeSchedulerTest() {
 		framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod3))
 		 */
 	})
-
 }
 
 
@@ -1565,8 +1569,5 @@ var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalSca
 	doPodResizeTests()
 	doPodResizeResourceQuotaTests()
 	doPodResizeErrorTests()
-})
-
-var _ = SIGDescribe("Pod InPlace Resize Container Scheduler Test [Feature:InPlacePodVerticalScaling]", func() {
-	doPodResizeSchedulerTest()
+	doPodResizeSchedulerTests()
 })
