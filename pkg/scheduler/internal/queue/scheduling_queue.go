@@ -599,11 +599,41 @@ func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
 	p.lock.Unlock()
 }
 
+func downsized(pod *v1.Pod) bool {
+	// TODO: check if pod is downsized for inplace resource update feature
+	if pod.Status.Resize == v1.PodResizeStatusInProgress {
+		podAllocatedCPU := int64(0)
+		podAllocatedMemory := int64(0)
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			podAllocatedCPU += containerStatus.ResourcesAllocated.Cpu().Value()
+			podAllocatedMemory += containerStatus.ResourcesAllocated.Memory().Value()
+		}
+
+		podRequestCPU := int64(0)
+		podRequestMemory := int64(0)
+
+		for _, container := range pod.Spec.Containers {
+			podRequestCPU += container.Resources.Requests.Cpu().Value()
+			podRequestMemory += container.Resources.Requests.Memory().Value()
+		}
+
+		if (podRequestCPU < podAllocatedCPU) || (podRequestMemory < podAllocatedMemory) {
+			klog.V(4).InfoS("Downsizing Pod %s. CPU: %d -> %d, Memory: %d -> %d.", pod.Name, podAllocatedCPU, podRequestCPU, podAllocatedMemory, podRequestMemory)
+			return true
+		}
+	}
+	return false
+}
+
 // AssignedPodUpdated is called when a bound pod is updated. Change of labels
 // may make pending pods with matching affinity terms schedulable.
 func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 	p.lock.Lock()
-	p.movePodsToActiveOrBackoffQueue(p.getUnschedulablePodsWithMatchingAffinityTerm(pod), AssignedPodUpdate)
+	if downsized(pod) {
+		p.MoveAllToActiveOrBackoffQueue(AssignedPodUpdate, nil)
+	} else {
+		p.movePodsToActiveOrBackoffQueue(p.getUnschedulablePodsWithMatchingAffinityTerm(pod), AssignedPodUpdate)
+	}
 	p.lock.Unlock()
 }
 
