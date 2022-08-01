@@ -287,10 +287,9 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 }
 
 func isPodOnCgroupv2Node(pod *v1.Pod) bool {
-	// Deterimne if pod is running on cgroupv2 or cgroupv1 node
-	cgv2File := "/sys/fs/cgroup/cgroup.controllers"
-	cmd := []string{"ls", cgv2File}
-	_, err := framework.LookForStringInPodExec(pod.Namespace, pod.Name, cmd, cgv2File, PollTimeout)
+	// Determine if pod is running on cgroupv2 or cgroupv1 node
+	cgroupv2File := "/sys/fs/cgroup/cgroup.controllers"
+	_, err := framework.RunKubectl(pod.Namespace, "exec", pod.Name, "--", "ls", cgroupv2File)
 	if err == nil {
 		return true
 	}
