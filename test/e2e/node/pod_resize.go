@@ -19,6 +19,8 @@ package node
 import (
 	"context"
 	"fmt"
+	resourceapi "k8s.io/kubernetes/pkg/api/v1/resource"
+	e2ekubelet "k8s.io/kubernetes/test/e2e/framework/kubelet"
 	"strconv"
 	"strings"
 	"time"
@@ -1440,8 +1442,136 @@ func doPodResizeErrorTests() {
 	}
 }
 
+func doPodResizeSchedulerTests() {
+	f := framework.NewDefaultFramework("pod-resize-scheduler")
+
+	ginkgo.It("pod-resize-scheduler-testcase1", func() {
+		nodes, _ := f.ClientSet.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		nodeNum := len(nodes.Items)
+		framework.ExpectEqual(nodeNum, 1)
+
+		ginkgo.By("Checking the node allocatable CPU resources!")
+		node := nodes.Items[0]
+		nodeAllocatableResources := node.Status.Allocatable
+		nodeAllocatableCPU := nodeAllocatableResources.Cpu()
+
+		// Obtain nodeAvailable = nodeAllocatable - nodeRequested CPUs on the node.
+		nodeAllocatableCPUMilliValue := nodeAllocatableCPU.MilliValue()
+		podList, err := e2ekubelet.GetKubeletRunningPods(f.ClientSet, node.Name)
+		for _, pod := range podList.Items {
+			podCPURequested := resourceapi.GetResourceRequestQuantity(&pod, v1.ResourceCPU)
+			nodeAllocatableCPUMilliValue = nodeAllocatableCPUMilliValue - podCPURequested.MilliValue()
+		}
+
+		nodeAvailableCPU := resource.NewMilliQuantity(nodeAllocatableCPUMilliValue, resource.DecimalSI)
+		framework.Logf("Node available CPU is %s", nodeAvailableCPU.String())
+		testPodRequest := resource.NewMilliQuantity(nodeAllocatableCPUMilliValue / 2, resource.DecimalSI)
+		framework.Logf("Test Pod Request CPU is %s", testPodRequest.String())
+		testPodRequestAfterResize := resource.NewMilliQuantity(testPodRequest.MilliValue() / 2, resource.DecimalSI)
+		framework.Logf("Test Pod CPU Request After Resize is %s", testPodRequestAfterResize.String())
+		testPodRequestToMakeSpace := resource.NewMilliQuantity(testPodRequestAfterResize.MilliValue() / 2, resource.DecimalSI)
+		framework.Logf("Test Pod CPU Request To Make Space is %s", testPodRequestToMakeSpace.String())
+
+		ginkgo.By("Making testPod1 that fits the node, testPod2 that cannot fit!")
+		c1 := []TestContainerInfo{
+			{
+				Name:      "c1",
+				Resources: &ContainerResources{CPUReq: testPodRequest.String(), CPULim: testPodRequest.String()},
+			},
+		}
+
+		c2 := []TestContainerInfo{
+			{
+				Name:      "c2",
+				Resources: &ContainerResources{CPUReq: nodeAvailableCPU.String(), CPULim: nodeAvailableCPU.String()},
+			},
+		}
+
+		patchTestpod2ToFitNode := fmt.Sprintf(`{
+			"spec":{
+					"containers":[
+						{
+							"name":"c2",
+							"resources":{"requests":{"cpu":"%s"},"limits":{"cpu":"%s"}}
+						}]
+					}
+			}`, testPodRequestAfterResize.String(), testPodRequestAfterResize.String())
+
+		tStamp := strconv.Itoa(time.Now().Nanosecond())
+		initDefaultResizePolicy(c1)
+		initDefaultResizePolicy(c2)
+		testPod1 := makeTestPod(f.Namespace.Name, "testpod1", tStamp, c1)
+		testPod2 := makeTestPod(f.Namespace.Name, "testpod2", tStamp, c2)
+
+		ginkgo.By(fmt.Sprintf("Creating %s that can fit the node!", testPod1.Name))
+		testPod1 = f.PodClient().CreateSync(testPod1)
+		framework.ExpectEqual(testPod1.Status.Phase, v1.PodRunning)
+
+		ginkgo.By(fmt.Sprintf("Creating %s that cannot fit the node and would be pending!", testPod2.Name))
+		testPod2 = f.PodClient().Create(testPod2)
+		err = e2epod.WaitForPodNameUnschedulableInNamespace(f.ClientSet, testPod2.Name, testPod2.Namespace)
+		framework.ExpectNoError(err)
+		framework.ExpectEqual(testPod2.Status.Phase, v1.PodPending)
+
+		ginkgo.By(fmt.Sprintf("patching pod %s for resize with CPU fit in the node", testPod2.Name))
+		testPod2, pErr := f.ClientSet.CoreV1().Pods(testPod2.Namespace).Patch(context.TODO(),
+			testPod2.Name, types.StrategicMergePatchType, []byte(patchTestpod2ToFitNode), metav1.PatchOptions{})
+		framework.ExpectNoError(pErr, "failed to patch pod for resize")
+
+		ginkgo.By(fmt.Sprintf("pod %s should be running after resize", testPod2.Name))
+		framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod2))
+
+		/*
+		c3 := []TestContainerInfo{
+			{
+				Name:      "c3",
+				Resources: &ContainerResources{CPUReq: testPodRequest.String(), CPULim: testPodRequest.String()},
+			},
+		}
+		patchC1ToMakeSpace := fmt.Sprintf(`{
+				"spec":{
+						"containers":[
+							{
+								"name":"c1",
+								"resources":{"requests":{"cpu":"%s"},"limits":{"cpu":"%s"}}
+							}]
+						}
+				}`, testPodRequestToMakeSpace.String(), testPodRequestToMakeSpace.String())
+
+		tStamp = strconv.Itoa(time.Now().Nanosecond())
+		initDefaultResizePolicy(c3)
+		testPod3 := makeTestPod(f.Namespace.Name, "testpod3", tStamp, c3)
+
+		ginkgo.By(fmt.Sprintf("Creating %s that cannot fit in the node due to resource availability!", testPod3.Name))
+		testPod3 = f.PodClient().Create(testPod3)
+		p3Err := e2epod.WaitForPodNameUnschedulableInNamespace(f.ClientSet, testPod3.Name, testPod3.Namespace)
+		framework.ExpectNoError(p3Err, "failed to create pod3 or pod3 did not become pending!")
+		framework.ExpectEqual(testPod3.Status.Phase, v1.PodPending)
+
+		ginkgo.By(fmt.Sprintf("Resizing %s to make enough space for %s!", testPod1.Name, testPod3.Name))
+		testPod1, p1Err := f.ClientSet.CoreV1().Pods(testPod1.Namespace).Patch(context.TODO(),
+			testPod1.Name, types.StrategicMergePatchType, []byte(patchC1ToMakeSpace), metav1.PatchOptions{})
+		framework.ExpectNoError(p1Err, "failed to patch pod for resize")
+
+		ginkgo.By(fmt.Sprintf("pod %s should be running after successfully resizing pod %s", testPod3.Name, testPod1.Name))
+		framework.Logf("pod %s has CPU %s", testPod1.Name, testPod1.Spec.Containers[0].Resources.Requests.Cpu().String())
+		framework.Logf("pod %s has CPU %s", testPod2.Name, testPod2.Spec.Containers[0].Resources.Requests.Cpu().String())
+		framework.Logf("pod %s has CPU %s", testPod3.Name, testPod3.Spec.Containers[0].Resources.Requests.Cpu().String())
+		framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod3))*/
+
+		ginkgo.By("deleting pods")
+		delErr1 := e2epod.DeletePodWithWait(f.ClientSet, testPod1)
+		framework.ExpectNoError(delErr1, "failed to delete pod %s", testPod1.Name)
+		delErr2 := e2epod.DeletePodWithWait(f.ClientSet, testPod2)
+		framework.ExpectNoError(delErr2, "failed to delete pod %s", testPod2.Name)
+		// delErr3 := e2epod.DeletePodWithWait(f.ClientSet, testPod3)
+		// framework.ExpectNoError(delErr3, "failed to delete pod %s", testPod3.Name)
+	})
+}
+
 var _ = SIGDescribe("Pod InPlace Resize Container [Feature:InPlacePodVerticalScaling]", func() {
 	doPodResizeTests()
 	doPodResizeResourceQuotaTests()
 	doPodResizeErrorTests()
+	doPodResizeSchedulerTests()
 })
