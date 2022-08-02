@@ -603,6 +603,8 @@ func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
 
 func downsized(pod *v1.Pod) bool {
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		// TODO(vinaykul,wangchen615,InPlacePodVerticalScaling): Fix this to determine when a
+		// pod is truly resized down (might need oldPod if we cannot determine from Status alone)
 		if pod.Status.Resize == v1.PodResizeStatusInProgress {
 			return true
 		}
