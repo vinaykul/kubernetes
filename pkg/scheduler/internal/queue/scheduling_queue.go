@@ -28,7 +28,6 @@ package queue
 
 import (
 	"fmt"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
 	"reflect"
 	"sync"
@@ -39,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	listersv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -601,7 +601,10 @@ func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
 	p.lock.Unlock()
 }
 
-func downsized(pod *v1.Pod) bool {
+// isPodResourcesResizedDown returns true if a pod CPU and/or memory resize request has been
+// admitted by kubelet, is 'InProgress', and results in a net sizing down of updated resources.
+// It returns false if either CPU or memory resource is net resized up, or if no resize is in progress.
+func isPodResourcesResizedDown(pod *v1.Pod) bool {
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
 		// TODO(vinaykul,wangchen615,InPlacePodVerticalScaling): Fix this to determine when a
 		// pod is truly resized down (might need oldPod if we cannot determine from Status alone)
@@ -616,7 +619,7 @@ func downsized(pod *v1.Pod) bool {
 // may make pending pods with matching affinity terms schedulable.
 func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 	p.lock.Lock()
-	if downsized(pod) {
+	if isPodResourcesResizedDown(pod) {
 		p.moveAllToActiveOrBackoffQueue(AssignedPodUpdate, nil)
 	} else {
 		p.movePodsToActiveOrBackoffQueue(p.getUnschedulablePodsWithMatchingAffinityTerm(pod), AssignedPodUpdate)

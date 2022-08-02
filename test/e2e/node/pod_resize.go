@@ -19,8 +19,6 @@ package node
 import (
 	"context"
 	"fmt"
-	resourceapi "k8s.io/kubernetes/pkg/api/v1/resource"
-	e2ekubelet "k8s.io/kubernetes/test/e2e/framework/kubelet"
 	"strconv"
 	"strings"
 	"time"
@@ -34,10 +32,12 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/component-base/featuregate"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	resourceapi "k8s.io/kubernetes/pkg/api/v1/resource"
 	"k8s.io/kubernetes/pkg/features"
 	kubecm "k8s.io/kubernetes/pkg/kubelet/cm"
 
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2ekubelet "k8s.io/kubernetes/test/e2e/framework/kubelet"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
