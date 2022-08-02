@@ -28,6 +28,8 @@ package queue
 
 import (
 	"fmt"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 	"reflect"
 	"sync"
 	"time"
@@ -600,27 +602,8 @@ func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
 }
 
 func downsized(pod *v1.Pod) bool {
-	// TODO: check if pod is downsized for inplace resource update feature
 	if pod.Status.Resize == v1.PodResizeStatusInProgress {
-		podAllocatedCPU := int64(0)
-		podAllocatedMemory := int64(0)
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			podAllocatedCPU += containerStatus.ResourcesAllocated.Cpu().Value()
-			podAllocatedMemory += containerStatus.ResourcesAllocated.Memory().Value()
-		}
-
-		podRequestCPU := int64(0)
-		podRequestMemory := int64(0)
-
-		for _, container := range pod.Spec.Containers {
-			podRequestCPU += container.Resources.Requests.Cpu().Value()
-			podRequestMemory += container.Resources.Requests.Memory().Value()
-		}
-
-		if (podRequestCPU < podAllocatedCPU) || (podRequestMemory < podAllocatedMemory) {
-			klog.V(4).InfoS("Downsizing Pod %s. CPU: %d -> %d, Memory: %d -> %d.", pod.Name, podAllocatedCPU, podRequestCPU, podAllocatedMemory, podRequestMemory)
-			return true
-		}
+		return utilfeature.DefaultFeatureGate.Enabled(features.ExecProbeTimeout)
 	}
 	return false
 }
@@ -630,7 +613,7 @@ func downsized(pod *v1.Pod) bool {
 func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 	p.lock.Lock()
 	if downsized(pod) {
-		p.MoveAllToActiveOrBackoffQueue(AssignedPodUpdate, nil)
+		p.moveAllToActiveOrBackoffQueue(AssignedPodUpdate, nil)
 	} else {
 		p.movePodsToActiveOrBackoffQueue(p.getUnschedulablePodsWithMatchingAffinityTerm(pod), AssignedPodUpdate)
 	}
@@ -644,6 +627,20 @@ func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(event framework.ClusterEvent, preCheck PreEnqueueCheck) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+	unschedulablePods := make([]*framework.QueuedPodInfo, 0, len(p.unschedulablePods.podInfoMap))
+	for _, pInfo := range p.unschedulablePods.podInfoMap {
+		if preCheck == nil || preCheck(pInfo.Pod) {
+			unschedulablePods = append(unschedulablePods, pInfo)
+		}
+	}
+	p.movePodsToActiveOrBackoffQueue(unschedulablePods, event)
+}
+
+// moveAllToActiveOrBackoffQueue moves all pods from unschedulablePods to activeQ or backoffQ.
+// This function adds all pods and then signals the condition variable to ensure that
+// if Pop() is waiting for an item, it receives the signal after all the pods are in the
+// queue and the head is the highest priority pod.
+func (p *PriorityQueue) moveAllToActiveOrBackoffQueue(event framework.ClusterEvent, preCheck PreEnqueueCheck) {
 	unschedulablePods := make([]*framework.QueuedPodInfo, 0, len(p.unschedulablePods.podInfoMap))
 	for _, pInfo := range p.unschedulablePods.podInfoMap {
 		if preCheck == nil || preCheck(pInfo.Pod) {
