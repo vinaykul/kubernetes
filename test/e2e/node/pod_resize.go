@@ -1458,6 +1458,7 @@ func doPodResizeSchedulerTests() {
 		// Obtain nodeAvailable = nodeAllocatable - nodeRequested CPUs on the node.
 		nodeAllocatableCPUMilliValue := nodeAllocatableCPU.MilliValue()
 		podList, err := e2ekubelet.GetKubeletRunningPods(f.ClientSet, node.Name)
+		framework.ExpectNoError(err, "failed to get running pods")
 		for _, pod := range podList.Items {
 			podCPURequested := resourceapi.GetResourceRequestQuantity(&pod, v1.ResourceCPU)
 			nodeAllocatableCPUMilliValue = nodeAllocatableCPUMilliValue - podCPURequested.MilliValue()
