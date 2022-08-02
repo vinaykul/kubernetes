@@ -1445,7 +1445,7 @@ func doPodResizeErrorTests() {
 func doPodResizeSchedulerTests() {
 	f := framework.NewDefaultFramework("pod-resize-scheduler")
 
-	ginkgo.It("pod-resize-scheduler-testcase1", func() {
+	ginkgo.It("pod-resize-scheduler-tests", func() {
 		nodes, _ := f.ClientSet.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		nodeNum := len(nodes.Items)
 		framework.ExpectEqual(nodeNum, 1)
