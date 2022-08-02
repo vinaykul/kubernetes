@@ -602,8 +602,10 @@ func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
 }
 
 func downsized(pod *v1.Pod) bool {
-	if pod.Status.Resize == v1.PodResizeStatusInProgress {
-		return utilfeature.DefaultFeatureGate.Enabled(features.ExecProbeTimeout)
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		if pod.Status.Resize == v1.PodResizeStatusInProgress {
+			return true
+		}
 	}
 	return false
 }
