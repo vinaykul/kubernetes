@@ -28,7 +28,6 @@ package queue
 
 import (
 	"fmt"
-	"k8s.io/kubernetes/pkg/features"
 	"reflect"
 	"sync"
 	"time"
@@ -40,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
+	"k8s.io/kubernetes/pkg/features"
 	listersv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -627,22 +627,7 @@ func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 	p.lock.Unlock()
 }
 
-// MoveAllToActiveOrBackoffQueue moves all pods from unschedulablePods to activeQ or backoffQ.
-// This function adds all pods and then signals the condition variable to ensure that
-// if Pop() is waiting for an item, it receives the signal after all the pods are in the
-// queue and the head is the highest priority pod.
-func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(event framework.ClusterEvent, preCheck PreEnqueueCheck) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	unschedulablePods := make([]*framework.QueuedPodInfo, 0, len(p.unschedulablePods.podInfoMap))
-	for _, pInfo := range p.unschedulablePods.podInfoMap {
-		if preCheck == nil || preCheck(pInfo.Pod) {
-			unschedulablePods = append(unschedulablePods, pInfo)
-		}
-	}
-	p.movePodsToActiveOrBackoffQueue(unschedulablePods, event)
-}
-
+// NOTE: this function assumes a lock has been acquired in the caller.
 // moveAllToActiveOrBackoffQueue moves all pods from unschedulablePods to activeQ or backoffQ.
 // This function adds all pods and then signals the condition variable to ensure that
 // if Pop() is waiting for an item, it receives the signal after all the pods are in the
@@ -655,6 +640,16 @@ func (p *PriorityQueue) moveAllToActiveOrBackoffQueue(event framework.ClusterEve
 		}
 	}
 	p.movePodsToActiveOrBackoffQueue(unschedulablePods, event)
+}
+
+// MoveAllToActiveOrBackoffQueue moves all pods from unschedulablePods to activeQ or backoffQ.
+// This function adds all pods and then signals the condition variable to ensure that
+// if Pop() is waiting for an item, it receives the signal after all the pods are in the
+// queue and the head is the highest priority pod.
+func (p *PriorityQueue) MoveAllToActiveOrBackoffQueue(event framework.ClusterEvent, preCheck PreEnqueueCheck) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.moveAllToActiveOrBackoffQueue(event, preCheck)
 }
 
 // NOTE: this function assumes lock has been acquired in caller
