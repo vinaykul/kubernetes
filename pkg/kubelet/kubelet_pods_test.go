@@ -32,6 +32,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,6 +56,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cri/streaming/portforward"
 	"k8s.io/kubernetes/pkg/kubelet/cri/streaming/remotecommand"
 	"k8s.io/kubernetes/pkg/kubelet/prober/results"
+	"k8s.io/kubernetes/pkg/kubelet/status"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 )
 
@@ -3788,5 +3790,128 @@ func TestConvertToAPIContainerStatusesDataRace(t *testing.T) {
 		go func() {
 			kl.convertToAPIContainerStatuses(pod, criStatus, []v1.ContainerStatus{}, []v1.Container{}, false, false)
 		}()
+	}
+}
+
+func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.InPlacePodVerticalScaling, true)()
+	nowTime := time.Now()
+	testContainerName := "ctr0"
+	testContainerID := kubecontainer.ContainerID{Type: "test", ID: testContainerName}
+	testContainer := v1.Container{
+		Name:  testContainerName,
+		Image: "img",
+	}
+	testContainerStatus := v1.ContainerStatus{
+		Name: testContainerName,
+	}
+	testPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       "123456",
+			Name:      "foo",
+			Namespace: "bar",
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{testContainer},
+		},
+		Status: v1.PodStatus{
+			ContainerStatuses: []v1.ContainerStatus{testContainerStatus},
+		},
+	}
+	testKubeContainerStatus := kubecontainer.Status{
+		Name:      testContainerName,
+		ID:        testContainerID,
+		Image:     "img",
+		ImageID:   "img1234",
+		State:     kubecontainer.ContainerStateRunning,
+		StartedAt: nowTime,
+	}
+	testPodStatus := &kubecontainer.PodStatus{
+		ID:                testPod.UID,
+		Name:              testPod.Name,
+		Namespace:         testPod.Namespace,
+		ContainerStatuses: []*kubecontainer.Status{&testKubeContainerStatus},
+	}
+	CPU1AndMem1G := v1.ResourceList{v1.ResourceCPU: resource.MustParse("1"), v1.ResourceMemory: resource.MustParse("1Gi")}
+	CPU2AndMem2G := v1.ResourceList{v1.ResourceCPU: resource.MustParse("2"), v1.ResourceMemory: resource.MustParse("2Gi")}
+
+	testKubelet := newTestKubelet(t, false)
+	defer testKubelet.Cleanup()
+	kubelet := testKubelet.kubelet
+	kubelet.statusManager = status.NewFakeManager()
+
+	for tdesc, tc := range map[string]struct {
+		Pod       *v1.Pod
+		Resources []v1.ResourceRequirements
+		PodStatus *kubecontainer.PodStatus
+		OldStatus []v1.ContainerStatus
+		Expected  []v1.ContainerStatus
+	}{
+		"GuaranteedQoSPod with CPU and memory CRI status": {
+			Pod:       testPod,
+			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G}},
+			PodStatus: testPodStatus,
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:      testContainerName,
+					Image:     "img",
+					ImageID:   "img1234",
+					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+					Resources: &v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1G,
+					Resources:          &v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+				},
+			},
+		},
+		"BurstableQoSPod, nil CRI status (not supported by runtime)": {
+			Pod:       testPod,
+			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G}},
+			PodStatus: testPodStatus,
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:      testContainerName,
+					Image:     "img",
+					ImageID:   "img1234",
+					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+					Resources: &v1.ResourceRequirements{Limits: CPU2AndMem2G, Requests: CPU1AndMem1G},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1G,
+					Resources:          &v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+				},
+			},
+		},
+	} {
+		for i := range tc.Pod.Spec.Containers {
+			tc.Pod.Spec.Containers[i].Resources = tc.Resources[i]
+			kubelet.statusManager.SetPodAllocation(tc.Pod)
+			tc.Pod.Status.ContainerStatuses[i].ResourcesAllocated = tc.Resources[i].Requests
+			if tc.Resources[i].Limits != nil {
+				tc.PodStatus.ContainerStatuses[i].Resources = &kubecontainer.ContainerResources{
+					MemoryLimit: tc.Resources[i].Limits.Memory(),
+					CPULimit:    tc.Resources[i].Limits.Cpu(),
+				}
+			}
+		}
+
+		t.Logf("TestCase: %q", tdesc)
+		cStatuses := kubelet.convertToAPIContainerStatuses(tc.Pod, tc.PodStatus, tc.OldStatus, tc.Pod.Spec.Containers, false, false)
+		assert.Equal(t, tc.Expected, cStatuses)
 	}
 }

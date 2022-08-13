@@ -18,6 +18,7 @@ package prober
 
 import (
 	"fmt"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -150,7 +151,13 @@ func TestDoProbe(t *testing.T) {
 			}
 
 			// Clean up.
-			m.statusManager = status.NewManager(&fake.Clientset{}, kubepod.NewBasicPodManager(nil, nil, nil), &statustest.FakePodDeletionSafetyProvider{})
+			testRootDir := ""
+			if tempDir, err := ioutil.TempDir("", "kubelet_test."); err != nil {
+				t.Fatalf("can't make a temp rootdir: %v", err)
+			} else {
+				testRootDir = tempDir
+			}
+			m.statusManager = status.NewManager(&fake.Clientset{}, kubepod.NewBasicPodManager(nil, nil, nil), &statustest.FakePodDeletionSafetyProvider{}, testRootDir)
 			resultsManager(m, probeType).Remove(testContainerID)
 		}
 	}
