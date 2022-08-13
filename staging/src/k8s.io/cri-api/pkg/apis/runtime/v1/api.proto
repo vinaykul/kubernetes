@@ -1192,8 +1192,6 @@ message UpdateContainerResourcesRequest {
     // container resources updating. This can be used for specifying experimental
     // resources to update or other options to use when updating the container.
     map<string, string> annotations = 4;
-    // Resource configuration for the container.
-    ContainerResources resources = 5;
 }
 
 message UpdateContainerResourcesResponse {}

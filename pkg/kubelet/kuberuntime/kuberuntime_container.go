@@ -573,14 +573,15 @@ func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName strin
 			Type: runtimeName,
 			ID:   status.Id,
 		},
-		Name:         labeledInfo.ContainerName,
-		Image:        status.Image.Image,
-		ImageID:      status.ImageRef,
-		Hash:         annotatedInfo.Hash,
-		RestartCount: annotatedInfo.RestartCount,
-		State:        toKubeContainerState(status.State),
-		CreatedAt:    time.Unix(0, status.CreatedAt),
-		Resources:    cStatusResources,
+		Name:                 labeledInfo.ContainerName,
+		Image:                status.Image.Image,
+		ImageID:              status.ImageRef,
+		Hash:                 annotatedInfo.Hash,
+		HashWithoutResources: annotatedInfo.HashWithoutResources,
+		RestartCount:         annotatedInfo.RestartCount,
+		State:                toKubeContainerState(status.State),
+		CreatedAt:            time.Unix(0, status.CreatedAt),
+		Resources:            cStatusResources,
 	}
 
 	if status.State != runtimeapi.ContainerState_CONTAINER_CREATED {

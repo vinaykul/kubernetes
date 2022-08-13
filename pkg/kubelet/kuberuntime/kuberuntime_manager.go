@@ -526,7 +526,6 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 	if !exists || apiContainerStatus.State.Running == nil || apiContainerStatus.Resources == nil ||
 		kubeContainerStatus.State != kubecontainer.ContainerStateRunning ||
 		kubeContainerStatus.ID.String() != apiContainerStatus.ContainerID ||
-		len(diff.ObjectDiff(container.Resources, apiContainerStatus.Resources)) == 0 ||
 		len(diff.ObjectDiff(container.Resources.Requests, apiContainerStatus.ResourcesAllocated)) != 0 {
 		return true
 	}
@@ -627,7 +626,7 @@ func (m *kubeGenericRuntimeManager) computePodResizeAction(pod *v1.Pod, containe
 
 func (m *kubeGenericRuntimeManager) doPodResizeAction(pod *v1.Pod, podStatus *kubecontainer.PodStatus, podContainerChanges podActions, result kubecontainer.PodSyncResult) {
 	pcm := m.containerManager.NewPodContainerManager()
-	//TODO(vinaykul): Figure out best way to get enforceMemoryQoS value (parameter #4 below) in platform-agnostic way
+	//TODO(vinaykul,InPlacePodVerticalScaling): Figure out best way to get enforceMemoryQoS value (parameter #4 below) in platform-agnostic way
 	podResources := cm.ResourceConfigForPod(pod, m.cpuCFSQuota, uint64((m.cpuCFSQuotaPeriod.Duration)/time.Microsecond), false)
 	if podResources == nil {
 		klog.ErrorS(nil, "Unable to get resource configuration", "pod", pod.Name)
@@ -911,7 +910,10 @@ func (m *kubeGenericRuntimeManager) computePodActions(pod *v1.Pod, podStatus *ku
 		var message string
 		var reason containerKillReason
 		restart := shouldRestartOnFailure(pod)
-		if _, _, changed := containerChanged(&container, containerStatus); changed {
+		// Do not restart if only the Resources field has changed with InPlacePodVerticalScaling enabled
+		if _, _, changed := containerChanged(&container, containerStatus); changed &&
+			(!utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) ||
+				kubecontainer.HashContainerWithoutResources(&container) != containerStatus.HashWithoutResources) {
 			message = fmt.Sprintf("Container %s definition changed", container.Name)
 			// Restart regardless of the restart policy because the container
 			// spec changed.
@@ -924,10 +926,9 @@ func (m *kubeGenericRuntimeManager) computePodActions(pod *v1.Pod, podStatus *ku
 			// If the container failed the startup probe, we should kill it.
 			message = fmt.Sprintf("Container %s failed startup probe", container.Name)
 			reason = reasonStartupProbe
-		} else if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
-			if keep := m.computePodResizeAction(pod, idx, containerStatus, &changes); keep {
-				keepCount++
-			}
+		} else if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) &&
+			!m.computePodResizeAction(pod, idx, containerStatus, &changes) {
+			// computePodResizeAction updates 'changes' if resize policy requires restarting this container
 			continue
 		} else {
 			// Keep the container.
