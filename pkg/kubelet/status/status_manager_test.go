@@ -18,6 +18,7 @@ package status
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -84,7 +85,13 @@ func (m *manager) testSyncBatch() {
 func newTestManager(kubeClient clientset.Interface) *manager {
 	podManager := kubepod.NewBasicPodManager(podtest.NewFakeMirrorClient(), kubesecret.NewFakeManager(), kubeconfigmap.NewFakeManager())
 	podManager.AddPod(getTestPod())
-	return NewManager(kubeClient, podManager, &statustest.FakePodDeletionSafetyProvider{}).(*manager)
+	testRootDir := ""
+	if tempDir, err := ioutil.TempDir("", "kubelet_test."); err != nil {
+		return nil
+	} else {
+		testRootDir = tempDir
+	}
+	return NewManager(kubeClient, podManager, &statustest.FakePodDeletionSafetyProvider{}, testRootDir).(*manager)
 }
 
 func generateRandomMessage() string {
@@ -958,7 +965,7 @@ func TestTerminatePod_DefaultUnknownStatus(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			podManager := kubepod.NewBasicPodManager(podtest.NewFakeMirrorClient(), kubesecret.NewFakeManager(), kubeconfigmap.NewFakeManager())
-			syncer := NewManager(&fake.Clientset{}, podManager, &statustest.FakePodDeletionSafetyProvider{}).(*manager)
+			syncer := NewManager(&fake.Clientset{}, podManager, &statustest.FakePodDeletionSafetyProvider{}, "").(*manager)
 
 			original := tc.pod.DeepCopy()
 			syncer.SetPodStatus(original, original.Status)

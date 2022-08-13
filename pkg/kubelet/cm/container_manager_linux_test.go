@@ -148,8 +148,8 @@ func TestSoftRequirementsValidationSuccess(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "")
 	req.NoError(err)
 	defer os.RemoveAll(tempDir)
-	req.NoError(ioutil.WriteFile(path.Join(tempDir, "cpu.cfs_period_us"), []byte("0"), os.ModePerm))
-	req.NoError(ioutil.WriteFile(path.Join(tempDir, "cpu.cfs_quota_us"), []byte("0"), os.ModePerm))
+	req.NoError(os.WriteFile(path.Join(tempDir, "cpu.cfs_period_us"), []byte("0"), os.ModePerm))
+	req.NoError(os.WriteFile(path.Join(tempDir, "cpu.cfs_quota_us"), []byte("0"), os.ModePerm))
 	mountInt := mount.NewFakeMounter(
 		[]mount.MountPoint{
 			{

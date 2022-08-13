@@ -46,7 +46,9 @@ import (
 	kubetypes "k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
+	"k8s.io/kubernetes/pkg/features"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/cri/remote"
 	"k8s.io/kubernetes/pkg/kubelet/events"
@@ -356,6 +358,18 @@ func (m *kubeGenericRuntimeManager) generateContainerConfig(container *v1.Contai
 	return config, cleanupAction, nil
 }
 
+func (m *kubeGenericRuntimeManager) updateContainerResources(pod *v1.Pod, container *v1.Container, containerID kubecontainer.ContainerID) error {
+	containerResources := m.generateContainerResources(pod, container)
+	if containerResources == nil {
+		return fmt.Errorf("container %q updateContainerResources failed: cannot generate resources config", containerID.String())
+	}
+	err := m.runtimeService.UpdateContainerResources(containerID.ID, containerResources)
+	if err != nil {
+		klog.ErrorS(err, "UpdateContainerResources failed", "container", containerID.String())
+	}
+	return err
+}
+
 // makeDevices generates container devices for kubelet runtime v1.
 func makeDevices(opts *kubecontainer.RunContainerOptions) []*runtimeapi.Device {
 	devices := make([]*runtimeapi.Device, len(opts.Devices))
@@ -549,6 +563,11 @@ func (m *kubeGenericRuntimeManager) getPodContainerStatuses(uid kubetypes.UID, n
 func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName string) *kubecontainer.Status {
 	annotatedInfo := getContainerInfoFromAnnotations(status.Annotations)
 	labeledInfo := getContainerInfoFromLabels(status.Labels)
+	var cStatusResources *kubecontainer.ContainerResources
+	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling) {
+		// If runtime reports cpu & memory resources info, add it to container status
+		cStatusResources = toKubeContainerResources(status.Resources)
+	}
 	cStatus := &kubecontainer.Status{
 		ID: kubecontainer.ContainerID{
 			Type: runtimeName,
@@ -561,6 +580,7 @@ func toKubeContainerStatus(status *runtimeapi.ContainerStatus, runtimeName strin
 		RestartCount: annotatedInfo.RestartCount,
 		State:        toKubeContainerState(status.State),
 		CreatedAt:    time.Unix(0, status.CreatedAt),
+		Resources:    cStatusResources,
 	}
 
 	if status.State != runtimeapi.ContainerState_CONTAINER_CREATED {

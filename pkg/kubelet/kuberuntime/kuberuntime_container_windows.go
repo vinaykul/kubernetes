@@ -43,6 +43,12 @@ func (m *kubeGenericRuntimeManager) applyPlatformSpecificContainerConfig(config 
 	return nil
 }
 
+// generateContainerResources generates platform specific (windows) container resources config for runtime
+func (m *kubeGenericRuntimeManager) generateContainerResources(pod *v1.Pod, container *v1.Container) *runtimeapi.ContainerResources {
+	//TODO: Add windows support
+	return nil
+}
+
 // generateWindowsContainerConfig generates windows container config for kubelet runtime v1.
 // Refer https://git.k8s.io/design-proposals-archive/node/cri-windows.md.
 func (m *kubeGenericRuntimeManager) generateWindowsContainerConfig(container *v1.Container, pod *v1.Pod, uid *int64, username string) (*runtimeapi.WindowsContainerConfig, error) {
@@ -133,4 +139,9 @@ func (m *kubeGenericRuntimeManager) generateWindowsContainerConfig(container *v1
 	}
 
 	return wc, nil
+}
+
+func toKubeContainerResources(statusResources *runtimeapi.ContainerResources) *kubecontainer.ContainerResources {
+	//TODO: Add windows support
+	return nil
 }
