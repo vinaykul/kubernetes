@@ -3835,23 +3835,24 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 	}
 	CPU1AndMem1G := v1.ResourceList{v1.ResourceCPU: resource.MustParse("1"), v1.ResourceMemory: resource.MustParse("1Gi")}
 	CPU2AndMem2G := v1.ResourceList{v1.ResourceCPU: resource.MustParse("2"), v1.ResourceMemory: resource.MustParse("2Gi")}
+	CPU1AndMem1GAndStorage2G := CPU1AndMem1G.DeepCopy()
+	CPU1AndMem1GAndStorage2G[v1.ResourceEphemeralStorage] = resource.MustParse("2Gi")
+	CPU2AndMem2GAndStorage2G := CPU2AndMem2G.DeepCopy()
+	CPU2AndMem2GAndStorage2G[v1.ResourceEphemeralStorage] = resource.MustParse("2Gi")
 
 	testKubelet := newTestKubelet(t, false)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
 	kubelet.statusManager = status.NewFakeManager()
 
+	idx := 0
 	for tdesc, tc := range map[string]struct {
-		Pod       *v1.Pod
 		Resources []v1.ResourceRequirements
-		PodStatus *kubecontainer.PodStatus
 		OldStatus []v1.ContainerStatus
 		Expected  []v1.ContainerStatus
 	}{
 		"GuaranteedQoSPod with CPU and memory CRI status": {
-			Pod:       testPod,
 			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G}},
-			PodStatus: testPodStatus,
 			OldStatus: []v1.ContainerStatus{
 				{
 					Name:      testContainerName,
@@ -3873,10 +3874,8 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 				},
 			},
 		},
-		"BurstableQoSPod, nil CRI status (not supported by runtime)": {
-			Pod:       testPod,
+		"BurstableQoSPod with CPU and memory CRI status": {
 			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G}},
-			PodStatus: testPodStatus,
 			OldStatus: []v1.ContainerStatus{
 				{
 					Name:      testContainerName,
@@ -3898,21 +3897,115 @@ func TestConvertToAPIContainerStatusesForResources(t *testing.T) {
 				},
 			},
 		},
+		"GuaranteedQoSPod with CPU and memory CRI status, with ephemeral storage": {
+			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G}},
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:      testContainerName,
+					Image:     "img",
+					ImageID:   "img1234",
+					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+					Resources: &v1.ResourceRequirements{Limits: CPU1AndMem1G, Requests: CPU1AndMem1G},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1GAndStorage2G,
+					Resources:          &v1.ResourceRequirements{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G},
+				},
+			},
+		},
+		"BurstableQoSPod with CPU and memory CRI status, with ephemeral storage": {
+			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G}},
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:      testContainerName,
+					Image:     "img",
+					ImageID:   "img1234",
+					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+					Resources: &v1.ResourceRequirements{Limits: CPU2AndMem2GAndStorage2G, Requests: CPU2AndMem2GAndStorage2G},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1GAndStorage2G,
+					Resources:          &v1.ResourceRequirements{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G},
+				},
+			},
+		},
+		"BurstableQoSPod with CPU and memory CRI status, with ephemeral storage, nil resources in OldStatus": {
+			Resources: []v1.ResourceRequirements{{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G}},
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:    testContainerName,
+					Image:   "img",
+					ImageID: "img1234",
+					State:   v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:               testContainerName,
+					ContainerID:        testContainerID.String(),
+					Image:              "img",
+					ImageID:            "img1234",
+					State:              v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					ResourcesAllocated: CPU1AndMem1GAndStorage2G,
+					Resources:          &v1.ResourceRequirements{Limits: CPU1AndMem1GAndStorage2G, Requests: CPU1AndMem1GAndStorage2G},
+				},
+			},
+		},
+		"BestEffortQoSPod": {
+			OldStatus: []v1.ContainerStatus{
+				{
+					Name:      testContainerName,
+					Image:     "img",
+					ImageID:   "img1234",
+					State:     v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+					Resources: &v1.ResourceRequirements{},
+				},
+			},
+			Expected: []v1.ContainerStatus{
+				{
+					Name:        testContainerName,
+					ContainerID: testContainerID.String(),
+					Image:       "img",
+					ImageID:     "img1234",
+					State:       v1.ContainerState{Running: &v1.ContainerStateRunning{StartedAt: metav1.NewTime(nowTime)}},
+					Resources:   &v1.ResourceRequirements{},
+				},
+			},
+		},
 	} {
-		for i := range tc.Pod.Spec.Containers {
-			tc.Pod.Spec.Containers[i].Resources = tc.Resources[i]
-			kubelet.statusManager.SetPodAllocation(tc.Pod)
-			tc.Pod.Status.ContainerStatuses[i].ResourcesAllocated = tc.Resources[i].Requests
-			if tc.Resources[i].Limits != nil {
-				tc.PodStatus.ContainerStatuses[i].Resources = &kubecontainer.ContainerResources{
+		tPod := testPod.DeepCopy()
+		tPod.Name = fmt.Sprintf("%s-%d", testPod.Name, idx)
+		for i := range tPod.Spec.Containers {
+			if tc.Resources != nil {
+				tPod.Spec.Containers[i].Resources = tc.Resources[i]
+			}
+			kubelet.statusManager.SetPodAllocation(tPod)
+			if tc.Resources != nil {
+				tPod.Status.ContainerStatuses[i].ResourcesAllocated = tc.Resources[i].Requests
+				testPodStatus.ContainerStatuses[i].Resources = &kubecontainer.ContainerResources{
 					MemoryLimit: tc.Resources[i].Limits.Memory(),
 					CPULimit:    tc.Resources[i].Limits.Cpu(),
+					CPURequest:  tc.Resources[i].Requests.Cpu(),
 				}
 			}
 		}
 
 		t.Logf("TestCase: %q", tdesc)
-		cStatuses := kubelet.convertToAPIContainerStatuses(tc.Pod, tc.PodStatus, tc.OldStatus, tc.Pod.Spec.Containers, false, false)
+		cStatuses := kubelet.convertToAPIContainerStatuses(tPod, testPodStatus, tc.OldStatus, tPod.Spec.Containers, false, false)
 		assert.Equal(t, tc.Expected, cStatuses)
 	}
 }

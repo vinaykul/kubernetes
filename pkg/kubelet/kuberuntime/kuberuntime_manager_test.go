@@ -1614,6 +1614,7 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 	memPolicyRestartRequired := v1.ContainerResizePolicy{ResourceName: v1.ResourceMemory, Policy: v1.RestartRequired}
 
 	for desc, test := range map[string]struct {
+		podResizePolicyFn       func(*v1.Pod)
 		mutatePodFn             func(*v1.Pod)
 		getExpectedPodActionsFn func(*v1.Pod, *kubecontainer.PodStatus) *podActions
 	}{
@@ -1762,11 +1763,13 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 			},
 		},
 		"Update container CPU and memory resources with Restart policy for CPU": {
+			podResizePolicyFn: func(pod *v1.Pod) {
+				pod.Spec.Containers[0].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
+			},
 			mutatePodFn: func(pod *v1.Pod) {
 				pod.Spec.Containers[0].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
-				pod.Spec.Containers[0].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
 				if idx, found := podutil.GetIndexOfContainerStatus(pod.Status.ContainerStatuses, pod.Spec.Containers[0].Name); found {
 					pod.Status.ContainerStatuses[idx].Resources = &v1.ResourceRequirements{
 						Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
@@ -1791,11 +1794,13 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 			},
 		},
 		"Update container CPU and memory resources with Restart policy for memory": {
+			podResizePolicyFn: func(pod *v1.Pod) {
+				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
+			},
 			mutatePodFn: func(pod *v1.Pod) {
 				pod.Spec.Containers[2].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem200M},
 				}
-				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
 				if idx, found := podutil.GetIndexOfContainerStatus(pod.Status.ContainerStatuses, pod.Spec.Containers[2].Name); found {
 					pod.Status.ContainerStatuses[idx].Resources = &v1.ResourceRequirements{
 						Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
@@ -1820,11 +1825,13 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 			},
 		},
 		"Update container memory resources with Restart policy for CPU": {
+			podResizePolicyFn: func(pod *v1.Pod) {
+				pod.Spec.Containers[1].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
+			},
 			mutatePodFn: func(pod *v1.Pod) {
 				pod.Spec.Containers[1].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem200M},
 				}
-				pod.Spec.Containers[1].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartRequired, memPolicyRestartNotRequired}
 				if idx, found := podutil.GetIndexOfContainerStatus(pod.Status.ContainerStatuses, pod.Spec.Containers[1].Name); found {
 					pod.Status.ContainerStatuses[idx].Resources = &v1.ResourceRequirements{
 						Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
@@ -1858,11 +1865,13 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 			},
 		},
 		"Update container CPU resources with Restart policy for memory": {
+			podResizePolicyFn: func(pod *v1.Pod) {
+				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
+			},
 			mutatePodFn: func(pod *v1.Pod) {
 				pod.Spec.Containers[2].Resources = v1.ResourceRequirements{
 					Limits: v1.ResourceList{v1.ResourceCPU: cpu200m, v1.ResourceMemory: mem100M},
 				}
-				pod.Spec.Containers[2].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartRequired}
 				if idx, found := podutil.GetIndexOfContainerStatus(pod.Status.ContainerStatuses, pod.Spec.Containers[2].Name); found {
 					pod.Status.ContainerStatuses[idx].Resources = &v1.ResourceRequirements{
 						Limits: v1.ResourceList{v1.ResourceCPU: cpu100m, v1.ResourceMemory: mem100M},
@@ -1900,12 +1909,16 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 		for idx := range pod.Spec.Containers {
 			// default resize policy when pod resize feature is enabled
 			pod.Spec.Containers[idx].ResizePolicy = []v1.ContainerResizePolicy{cpuPolicyRestartNotRequired, memPolicyRestartNotRequired}
+		}
+		if test.podResizePolicyFn != nil {
+			test.podResizePolicyFn(pod)
+		}
+		for idx := range pod.Spec.Containers {
+			// compute hash
 			if kcs := kps.FindContainerStatusByName(pod.Spec.Containers[idx].Name); kcs != nil {
 				kcs.Hash = kubecontainer.HashContainer(&pod.Spec.Containers[idx])
+				kcs.HashWithoutResources = kubecontainer.HashContainerWithoutResources(&pod.Spec.Containers[idx])
 			}
-		}
-		if test.mutatePodFn != nil {
-			test.mutatePodFn(pod)
 		}
 		makeAndSetFakePod(t, m, fakeRuntime, pod)
 		status, _ := m.GetPodStatus(kps.ID, pod.Name, pod.Namespace)
@@ -1915,6 +1928,15 @@ func TestComputePodActionsForPodResize(t *testing.T) {
 					pod.Status.ContainerStatuses[csIdx].ContainerID = rcs.ID.String()
 				}
 			}
+		}
+		for idx := range pod.Spec.Containers {
+			if kcs := kps.FindContainerStatusByName(pod.Spec.Containers[idx].Name); kcs != nil {
+				kcs.Hash = kubecontainer.HashContainer(&pod.Spec.Containers[idx])
+				kcs.HashWithoutResources = kubecontainer.HashContainerWithoutResources(&pod.Spec.Containers[idx])
+			}
+		}
+		if test.mutatePodFn != nil {
+			test.mutatePodFn(pod)
 		}
 		expectedActions := test.getExpectedPodActionsFn(pod, status)
 		actions := m.computePodActions(pod, status)
