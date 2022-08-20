@@ -55,6 +55,7 @@ const (
 	Cgroupv2MemRequest string = "/sys/fs/cgroup/memory.min"
 	Cgroupv2CPULimit   string = "/sys/fs/cgroup/cpu.max"
 	Cgroupv2CPURequest string = "/sys/fs/cgroup/cpu.weight"
+	CpuPeriod          string = "100000"
 
 	PollInterval time.Duration = 2 * time.Second
 	PollTimeout  time.Duration = 4 * time.Minute
@@ -291,6 +292,7 @@ func verifyPodStatusResources(pod *v1.Pod, tcInfo []TestContainerInfo) {
 
 func isPodOnCgroupv2Node(pod *v1.Pod) bool {
 	// Determine if pod is running on cgroupv2 or cgroupv1 node
+	//TODO(vinaykul,InPlacePodVerticalScaling): Is there a better way to determine this?
 	cgroupv2File := "/sys/fs/cgroup/cgroup.controllers"
 	_, err := framework.RunKubectl(pod.Namespace, "exec", pod.Name, "--", "ls", cgroupv2File)
 	if err == nil {
@@ -311,9 +313,12 @@ func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, fl
 	}
 	verifyCgroupValue := func(cName, cgPath, expectedCgValue string) bool {
 		cmd := []string{"head", "-n", "1", cgPath}
+		framework.Logf("Namespace %s Pod %s Container %s - looking for cgroup value %s in path %s",
+			pod.Namespace, pod.Name, cName, expectedCgValue, cgPath)
 		cgValue, err := framework.LookForStringInPodExecToContainer(pod.Namespace, pod.Name, cName, cmd, expectedCgValue, PollTimeout)
 		if flagError {
-			framework.ExpectNoError(err, "failed to find expected cgroup value in container")
+			framework.ExpectNoError(err, fmt.Sprintf("failed to find expected value '%s' in container cgroup '%s'",
+				expectedCgValue, cgPath))
 		}
 		cgValue = strings.Trim(cgValue, "\n")
 		if flagError {
@@ -345,8 +350,11 @@ func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, fl
 				cpuQuota = -1
 			}
 			cpuLimitString = strconv.FormatInt(cpuQuota, 10)
-			if podOnCgroupv2Node && cpuLimitString == "-1" {
-				cpuLimitString = "max"
+			if podOnCgroupv2Node {
+				if cpuLimitString == "-1" {
+					cpuLimitString = "max"
+				}
+				cpuLimitString = fmt.Sprintf("%s %s", cpuLimitString, CpuPeriod)
 			}
 			memLimitString = strconv.FormatInt(memLimitInBytes, 10)
 			if podOnCgroupv2Node && memLimitString == "0" {
@@ -359,6 +367,10 @@ func verifyPodContainersCgroupValues(pod *v1.Pod, tcInfo []TestContainerInfo, fl
 			}
 			if !verifyCgroupValue(ci.Name, cgroupCPULimit, cpuLimitString) {
 				return false
+			}
+			if podOnCgroupv2Node {
+				// convert cgroup v1 cpu.shares value to cgroup v2 cpu.weight value
+				cpuShares = int64(1 + ((cpuShares-2)*9999)/262142)
 			}
 			if !verifyCgroupValue(ci.Name, cgroupCPURequest, strconv.FormatInt(cpuShares, 10)) {
 				return false
@@ -446,12 +458,9 @@ func waitForPodResizeActuation(podClient *framework.PodClient, pod, patchedPod *
 	// Wait for pod resource allocations to equal expected values after resize
 	resizedPod, aErr := waitPodAllocationsEqualsExpected()
 	framework.ExpectNoError(aErr, "failed to verify pod resource allocation values equals expected values")
-	//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
-	if !isPodOnCgroupv2Node(pod) {
-		// Wait for container cgroup values to equal expected cgroup values after resize
-		cErr := waitContainerCgroupValuesEqualsExpected()
-		framework.ExpectNoError(cErr, "failed to verify container cgroup values equals expected values")
-	}
+	// Wait for container cgroup values to equal expected cgroup values after resize
+	cErr := waitContainerCgroupValuesEqualsExpected()
+	framework.ExpectNoError(cErr, "failed to verify container cgroup values equals expected values")
 	//TODO(vinaykul,InPlacePodVerticalScaling): Remove featureGatePostAlpha upon exiting Alpha.
 	//                containerd needs to add CRI support before Beta (See Node KEP #2273)
 	if isFeatureGatePostAlpha() {
@@ -1218,10 +1227,7 @@ func doPodResizeTests() {
 			resizedPod := waitForPodResizeActuation(f.PodClient(), newPod, patchedPod, tc.expected)
 
 			ginkgo.By("verifying pod container's cgroup values after resize")
-			//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
-			if !isPodOnCgroupv2Node(resizedPod) {
-				verifyPodContainersCgroupValues(resizedPod, tc.expected, true)
-			}
+			verifyPodContainersCgroupValues(resizedPod, tc.expected, true)
 
 			ginkgo.By("verifying pod resources after resize")
 			verifyPodResources(resizedPod, tc.expected)
@@ -1311,28 +1317,13 @@ func doPodResizeResourceQuotaTests() {
 		resizedPod := waitForPodResizeActuation(f.PodClient(), newPod1, patchedPod, expected)
 
 		ginkgo.By("verifying pod container's cgroup values after resize")
-		//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
-		if !isPodOnCgroupv2Node(resizedPod) {
-			verifyPodContainersCgroupValues(resizedPod, expected, true)
-		}
+		verifyPodContainersCgroupValues(resizedPod, expected, true)
 
 		ginkgo.By("verifying pod resources after resize")
 		verifyPodResources(resizedPod, expected)
 
 		ginkgo.By("verifying pod allocations after resize")
 		verifyPodAllocations(resizedPod, expected, true)
-
-		ginkgo.By(fmt.Sprintf("patching pod %s for resize with CPU exceeding resource quota", resizedPod.Name))
-		_, pErrExceedCPU := f.ClientSet.CoreV1().Pods(resizedPod.Namespace).Patch(context.TODO(),
-			resizedPod.Name, types.StrategicMergePatchType, []byte(patchStringExceedCPU), metav1.PatchOptions{})
-		framework.ExpectError(pErrExceedCPU, "exceeded quota: %s, requested: cpu=200m, used: cpu=700m, limited: cpu=800m",
-			resourceQuota.Name)
-
-		ginkgo.By("verifying pod patched for resize exceeding CPU resource quota remains unchanged")
-		patchedPodExceedCPU, pErrEx1 := f.PodClient().Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
-		framework.ExpectNoError(pErrEx1, "failed to get pod post exceed CPU resize")
-		verifyPodResources(patchedPodExceedCPU, expected)
-		verifyPodAllocations(patchedPodExceedCPU, expected, true)
 
 		ginkgo.By("patching pod for resize with memory exceeding resource quota")
 		_, pErrExceedMemory := f.ClientSet.CoreV1().Pods(resizedPod.Namespace).Patch(context.TODO(),
@@ -1345,6 +1336,18 @@ func doPodResizeResourceQuotaTests() {
 		framework.ExpectNoError(pErrEx2, "failed to get pod post exceed memory resize")
 		verifyPodResources(patchedPodExceedMemory, expected)
 		verifyPodAllocations(patchedPodExceedMemory, expected, true)
+
+		ginkgo.By(fmt.Sprintf("patching pod %s for resize with CPU exceeding resource quota", resizedPod.Name))
+		_, pErrExceedCPU := f.ClientSet.CoreV1().Pods(resizedPod.Namespace).Patch(context.TODO(),
+			resizedPod.Name, types.StrategicMergePatchType, []byte(patchStringExceedCPU), metav1.PatchOptions{})
+		framework.ExpectError(pErrExceedCPU, "exceeded quota: %s, requested: cpu=200m, used: cpu=700m, limited: cpu=800m",
+			resourceQuota.Name)
+
+		ginkgo.By("verifying pod patched for resize exceeding CPU resource quota remains unchanged")
+		patchedPodExceedCPU, pErrEx1 := f.PodClient().Get(context.TODO(), resizedPod.Name, metav1.GetOptions{})
+		framework.ExpectNoError(pErrEx1, "failed to get pod post exceed CPU resize")
+		verifyPodResources(patchedPodExceedCPU, expected)
+		verifyPodAllocations(patchedPodExceedCPU, expected, true)
 
 		ginkgo.By("deleting pods")
 		delErr1 := e2epod.DeletePodWithWait(f.ClientSet, newPod1)
@@ -1425,10 +1428,7 @@ func doPodResizeErrorTests() {
 			}
 
 			ginkgo.By("verifying pod container's cgroup values after patch")
-			//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
-			if !isPodOnCgroupv2Node(patchedPod) {
-				verifyPodContainersCgroupValues(patchedPod, tc.expected, true)
-			}
+			verifyPodContainersCgroupValues(patchedPod, tc.expected, true)
 
 			ginkgo.By("verifying pod resources after patch")
 			verifyPodResources(patchedPod, tc.expected)
@@ -1451,7 +1451,7 @@ func doPodResizeSchedulerTests() {
 		framework.ExpectNoError(err, "failed to get running pods")
 		gomega.Expect(len(nodes.Items) > 0)
 
-		// nodeAvailableCPU = nodeAllocatableCPU - sum(podAllocatedCPU)
+		// Calculate available CPU. nodeAvailableCPU = nodeAllocatableCPU - sum(podAllocatedCPU)
 		ginkgo.By("Find node CPU resources available for allocation!")
 		node := nodes.Items[0]
 		nodeAllocatableMilliCPU := node.Status.Allocatable.Cpu().MilliValue()
@@ -1570,10 +1570,7 @@ func doPodResizeSchedulerTests() {
 		framework.Logf("pod %s has CPU %s", testPod1.Name, testPod1.Spec.Containers[0].Resources.Requests.Cpu().String())
 		framework.Logf("pod %s has CPU %s", testPod2.Name, testPod2.Spec.Containers[0].Resources.Requests.Cpu().String())
 		framework.Logf("pod %s has CPU %s", testPod3.Name, testPod3.Spec.Containers[0].Resources.Requests.Cpu().String())
-		//TODO(vinaykul,InPlacePodVerticalScaling): Remove this check when cgroupv2 support is added
-		if !isPodOnCgroupv2Node(testPod3) {
-			framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod3))
-		}
+		framework.ExpectNoError(e2epod.WaitForPodRunningInNamespace(f.ClientSet, testPod3))
 
 		ginkgo.By("deleting pods")
 		delErr1 := e2epod.DeletePodWithWait(f.ClientSet, testPod1)
