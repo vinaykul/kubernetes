@@ -305,7 +305,7 @@ func (f *RemoteRuntime) Status(ctx context.Context, req *kubeapi.StatusRequest) 
 
 // UpdateContainerResources updates ContainerConfig of the container.
 func (f *RemoteRuntime) UpdateContainerResources(ctx context.Context, req *kubeapi.UpdateContainerResourcesRequest) (*kubeapi.UpdateContainerResourcesResponse, error) {
-	err := f.RuntimeService.UpdateContainerResources(req.ContainerId, &kubeapi.ContainerResources{Linux: req.Linux})
+	err := f.RuntimeService.UpdateContainerResources(req.ContainerId, &kubeapi.ContainerResources{Linux: req.Linux, Windows: req.Windows})
 	if err != nil {
 		return nil, err
 	}

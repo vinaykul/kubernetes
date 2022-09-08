@@ -257,6 +257,11 @@ func TestToKubeContainerStatusWithResources(t *testing.T) {
 						MemoryLimitInBytes: 524288000,
 						OomScoreAdj:        -998,
 					},
+					Windows: &runtimeapi.WindowsContainerResources{
+						CpuMaximum: 2500,
+						CpuCount: 1,
+						MemoryLimitInBytes: 524288000,
+					},
 				},
 			},
 			expected: &kubecontainer.Status{
@@ -284,6 +289,10 @@ func TestToKubeContainerStatusWithResources(t *testing.T) {
 						CpuQuota:  50000,
 						CpuPeriod: 100000,
 					},
+					Windows: &runtimeapi.WindowsContainerResources{
+						CpuMaximum: 2500,
+						CpuCount: 2,
+					},
 				},
 			},
 			expected: &kubecontainer.Status{
@@ -309,6 +318,9 @@ func TestToKubeContainerStatusWithResources(t *testing.T) {
 					Linux: &runtimeapi.LinuxContainerResources{
 						MemoryLimitInBytes: 524288000,
 						OomScoreAdj:        -998,
+					},
+					Windows: &runtimeapi.WindowsContainerResources{
+						MemoryLimitInBytes: 524288000,
 					},
 				},
 			},
