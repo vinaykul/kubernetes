@@ -48,8 +48,8 @@ const (
 	// MemoryMin is memory.min for cgroup v2
 	MemoryMin string = "memory.min"
 	// MemoryHigh is memory.high for cgroup v2
-	MemoryHigh        string = "memory.high"
-	Cgrou2MaxCpuLimit string = "max"
+	MemoryHigh         string = "memory.high"
+	Cgroup2MaxCpuLimit string = "max"
 )
 
 var RootCgroupName = CgroupName([]string{})
@@ -605,7 +605,7 @@ func getCgroupv2CpuConfig(cgroupPath string) (*ResourceConfig, error) {
 			cpuLimitAndPeriod, cgroupPath, errScan)
 	}
 	cpuLimit := int64(-1)
-	if cpuLimitStr != Cgrou2MaxCpuLimit {
+	if cpuLimitStr != Cgroup2MaxCpuLimit {
 		cpuLimit, err = strconv.ParseInt(cpuLimitStr, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert CPU limit as integer for cgroup %v: %v", cgroupPath, err)
@@ -690,7 +690,7 @@ func setCgroupv2CpuConfig(cgroupPath string, resourceConfig *ResourceConfig) err
 		if resourceConfig.CpuPeriod == nil {
 			return fmt.Errorf("CpuPeriod must be specified in order to set CpuLimit")
 		}
-		cpuLimitStr := Cgrou2MaxCpuLimit
+		cpuLimitStr := Cgroup2MaxCpuLimit
 		if *resourceConfig.CpuQuota > -1 {
 			cpuLimitStr = strconv.FormatInt(*resourceConfig.CpuQuota, 10)
 		}

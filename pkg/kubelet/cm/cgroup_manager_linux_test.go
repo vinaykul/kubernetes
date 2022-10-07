@@ -169,3 +169,55 @@ func TestParseSystemdToCgroupName(t *testing.T) {
 		}
 	}
 }
+
+func TestCpuSharesToCpuWeight(t *testing.T) {
+	testCases := []struct {
+		input    uint64
+		expected uint64
+	}{
+		{
+			input:    0,
+			expected: 0,
+		},
+		{
+			input:    2,
+			expected: 1,
+		},
+		{
+			input:    262144,
+			expected: 10000,
+		},
+	}
+
+	for _, testCase := range testCases {
+		if actual := CpuSharesToCpuWeight(testCase.input); !reflect.DeepEqual(actual, testCase.expected) {
+			t.Errorf("Unexpected result, input: %v, expected: %v, actual: %v", testCase.input, testCase.expected, actual)
+		}
+	}
+}
+
+func TestCpuWeightToCpuShares(t *testing.T) {
+	testCases := []struct {
+		input    uint64
+		expected uint64
+	}{
+		{
+			input:    0,
+			expected: 0,
+		},
+		{
+			input:    1,
+			expected: 2,
+		},
+		{
+			input:    10000,
+			expected: 262144,
+		},
+	}
+
+	for _, testCase := range testCases {
+		if actual := CpuWeightToCpuShares(testCase.input); !reflect.DeepEqual(actual, testCase.expected) {
+			t.Errorf("Unexpected result, input: %v, expected: %v, actual: %v", testCase.input, testCase.expected, actual)
+		}
+	}
+}
